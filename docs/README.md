@@ -10,7 +10,10 @@
 | [`operations.md`](operations.md) | Proposed configuration, diagnostics, migration and removal |
 | [`security-invariants.md`](security-invariants.md) | Safety invariant, mutation ordering and failure matrix |
 | [`platform-compatibility.md`](platform-compatibility.md) | Exact supported platform, reserved ranges and non-claims |
-| [`prototype-results.md`](prototype-results.md) | Executable PoC results (65 assertions, generic Linux) |
+| [`prototype-results.md`](prototype-results.md) | PoC and production-phase results (145 assertions, generic Linux) |
+| [`v0.1.0-evidence.md`](v0.1.0-evidence.md) | v0.1.0 test, package, resource evidence and remaining gates |
+| [`hardware-qualification-plan.md`](hardware-qualification-plan.md) | Plan only; target qualification is separately authorized |
+| [`migration-plan.md`](migration-plan.md) | Plan only; coverage-first cutover and bounded rollback |
 
 Planning artifacts:
 

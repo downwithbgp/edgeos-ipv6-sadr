@@ -3,8 +3,32 @@
 
 > **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
 
-**Status:** proposed for v0.1.0. Command names and exact output are illustrative until the
-configuration/operational templates are implemented and reviewed.
+**Status:** implemented for v0.1.0 and exercised off-device. Target output, configuration-engine
+ordering and hardware behavior remain qualification gates. The implemented route diagnostic uses the
+named form `show ipv6-sadr route source <source> destination <destination>` because adjacent
+positional tags were not evidenced in inspected vendor templates.
+
+### v0.1.0 implemented interface
+
+```text
+vyatta-ipv6-sadr validate-working
+vyatta-ipv6-sadr reconcile-working [--dry-run]
+vyatta-ipv6-sadr monitor [--resync SECONDS] [--debounce SECONDS]
+vyatta-ipv6-sadr boot-guard [--config PATH]
+vyatta-ipv6-sadr status|health [--json] [--mode active|working]
+vyatta-ipv6-sadr policy [--name NAME] [--json]
+vyatta-ipv6-sadr route --source SOURCE --destination DESTINATION [--json]
+```
+
+Runtime state is `/run/edgeos-ipv6-sadr/{manifest,journal,status,boot-guards,lock}`; it is
+recreated by the monitor's systemd `RuntimeDirectory` and cleared at reboot. There is no persistent
+snapshot. `boot-guard` parses `/config/config.boot` before `vyatta-router.service` and writes exact
+intent before installing terminal guards. The monitor runs `After=vyatta-router.service`.
+
+Health states are `effective`, `incomplete`, `protected`, `dependency-unavailable`, `shadowed`,
+`conflict`, `orphaned-guard`, `failed` and `disabled`; exit codes are 0, 2, 3, 4, 5, 6, 9, 7 and 8
+respectively (worst applicable). Reachability is `unverified` unless a later target check proves
+otherwise; route presence is not an end-to-end connectivity claim.
 
 ## 1. Configuration model
 
@@ -52,8 +76,8 @@ The subtree is intended to support normal EdgeOS discovery, tab completion, vali
 ```text
 show ipv6-sadr status
 show ipv6-sadr policy [<name>]
-show ipv6-sadr route <source> <destination> [iif <interface>]
-show ipv6-sadr health [--json]
+show ipv6-sadr route source <source> destination <destination>
+show ipv6-sadr health [json]
 ```
 
 ### `status`

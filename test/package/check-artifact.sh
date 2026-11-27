@@ -63,9 +63,14 @@ fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/sadr-artifact.XXXXXX")
 dpkg-deb -x "$DEB" "$TMP"
-if PERL5LIB="$TMP/usr/share/perl5" perl -MEdgeOS::IPv6SADR -MEdgeOS::IPv6SADR::Reconcile \
-    -MEdgeOS::IPv6SADR::Health -MEdgeOS::IPv6SADR::BootGuard -MEdgeOS::IPv6SADR::Monitor \
-    -e 'exit($EdgeOS::IPv6SADR::VERSION eq "0.1.0" ? 0 : 1)'; then
+if PERL5LIB="$TMP/usr/share/perl5" perl -e '
+    require "EdgeOS/IPv6SADR.pm";
+    require "EdgeOS/IPv6SADR/Reconcile.pm";
+    require "EdgeOS/IPv6SADR/Health.pm";
+    require "EdgeOS/IPv6SADR/BootGuard.pm";
+    require "EdgeOS/IPv6SADR/Monitor.pm";
+    exit($EdgeOS::IPv6SADR::VERSION eq "0.1.0" ? 0 : 1);
+'; then
     ok "installed Perl modules compile and report version 0.1.0"
 else
     bad "installed Perl modules do not compile or version mismatch"

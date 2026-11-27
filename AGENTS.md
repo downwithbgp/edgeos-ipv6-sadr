@@ -8,19 +8,22 @@
 `edgeos-ipv6-sadr` provides native, persistent IPv6 source-address-dependent routing (SADR) on
 Ubiquiti EdgeOS without NAT66, NPTv6 or address translation.
 
-**Current phase: v0.1.0 implementation.** The architecture is approved. Implement the production
-reconciler, native templates/services, tests and packaging on branch `feat/v0.1.0`. Do not install on
-the production router, migrate the manual table/rules, publish a release or claim hardware
-qualification in this phase.
+**Current phase: v0.1.0 implementation review.** The architecture is accepted and the production
+implementation, templates, services, tests and package are complete off-device on branch
+`feat/v0.1.0`. Independent review and the final gates are in progress. Do not install on the
+production router, migrate the manual table/rules, publish a release or claim hardware qualification
+in this phase.
 
 Current artifacts:
 
-* `docs/architecture/ADR-0001-routing-model.md` — proposed internal-whitelist + provider-table model.
-* `docs/requirements.md` — normative routing contract and non-guarantees.
-* `docs/investigation/2026-11-27-platform-investigation.md` — read-only target evidence.
-* `docs/investigation/2026-11-27-experiments.md` — generic-Linux experiment record.
-* `test/integration/netns-sadr.sh` — 65-assertion proof of concept, including 42 packet-path probes
-  (generic Linux only).
+* `docs/architecture/ADR-0001-routing-model.md` — accepted model and v0.1.0 implementation status.
+* `docs/v0.1.0-evidence.md` — test, package and resource evidence; known gates.
+* `docs/hardware-qualification-plan.md`, `docs/migration-plan.md` — design only; separate authorization.
+* `src/lib/EdgeOS/IPv6SADR*.pm`, `src/vyatta-ipv6-sadr` — production reconciler and CLI.
+* `templates/`, `systemd/`, `debian/` — native configuration/op integration, services and package.
+* `test/unit/` — 591 unit/property/failure assertions; `test/integration/` — 145-assertion namespace lab.
+* `docs/requirements.md`, `docs/security-invariants.md`, `docs/operations.md`,
+  `docs/testing-strategy.md`, `docs/platform-compatibility.md` — normative contracts and status.
 
 ## Hard constraints
 

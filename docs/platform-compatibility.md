@@ -3,8 +3,10 @@
 
 > **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
 
-**Status:** architecture phase. No installable package exists and no compatibility claim has been
-qualified on hardware.
+**Status:** v0.1.0 package builds reproducibly off-device and the preinst refuses unsupported
+firmware/kernel combinations. **No EdgeOS compatibility claim exists** and hardware qualification is
+pending. See [`v0.1.0-evidence.md`](v0.1.0-evidence.md) and
+[`hardware-qualification-plan.md`](hardware-qualification-plan.md).
 
 ## 1. Supported investigation platform
 

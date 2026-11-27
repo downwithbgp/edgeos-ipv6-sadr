@@ -1,17 +1,18 @@
 # Prototype results
 
-**Status:** generic-Linux proof of concept complete. Not EdgeOS evidence.
+**Status:** generic-Linux proof of concept and production-reconciler phase complete. Not EdgeOS
+evidence. The production phase is `test/integration/production-phase.sh`.
 
 ## 1. Artifact
 
 | Item | Value |
 |---|---|
-| Commit | `4ed46fc` (`test: strengthen SADR proof of concept after review`) |
+| Commit | `c2304db` (`test: run the production reconciler in the namespace lab`) |
 | Harness | `test/integration/netns-sadr.sh` |
 | Runner | `test/integration/run-in-docker.sh` |
 | Image | `test/integration/Dockerfile` (`debian:stable-slim`) |
 | Echo helper | `test/integration/echo6.py` |
-| Result | **65 pass / 0 fail** (42 packet-path probes, 15 state/ownership checks, 8 health checks; plus 2 non-asserting recorded observations) |
+| Result | **145 pass / 0 fail** (75 packet-path probes across the PoC and production phases; the original 65-assertion PoC is included) |
 | Environment | Host Linux 6.8.0-149, Docker 29.9.0, container iproute2 6.15.0, tcpdump 4.99.5, Python 3.13.5 |
 
 Reproduce:
@@ -21,7 +22,15 @@ make test
 REQUIRE_NETNS_TEST=1 make test-netns
 ```
 
-## 2. What the prototype demonstrates
+## 2. Production reconciler phase
+
+The production phase runs the real CLI and reconciler against the kernel with a local JSON config-API
+fixture. It covers boot-guard blocking before reconcile, initial apply, rule/table/guard assertions,
+packet paths, established TCP/UDP flows during a concurrent provider update, provider/internal/table
+loss and repair, disable, foreign-state refusal, monitor repair/restart and policy deletion. Evidence
+is **Verified (generic Linux)** only; target config-engine and hardware behavior remain gates.
+
+## 3. What the prototype demonstrates
 
 * A two-provider, dual-prefix topology with real packet captures and simulated source-address
   validation.
@@ -54,7 +63,7 @@ REQUIRE_NETNS_TEST=1 make test-netns
 * Health checks now verify the internal table and source rules; internal-route loss reports
   `incomplete`, and overlap/catch-all shadowing is detected.
 
-## 3. What the prototype does not demonstrate
+## 4. What the prototype does not demonstrate
 
 * EdgeOS 3.0.1, the 4.14.54-UBNT kernel, the target MIPS iproute2 or ER-X hardware.
 * Hardware offload honouring multi-table RPDB.
@@ -67,7 +76,7 @@ REQUIRE_NETNS_TEST=1 make test-netns
 * Non-Ethernet/point-to-point forwarding; only route installation forms are in scope for the
   architecture phase.
 
-## 4. Key interpretation
+## 5. Key interpretation
 
 The generic-Linux prototype establishes that the **mechanism** is sound and that the broad
 suppressor and source-specific FIB alternatives are insufficient for the strict contract. It does

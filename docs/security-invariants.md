@@ -3,8 +3,11 @@
 
 > **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
 
-**Status:** architecture-phase contract. This file states the invariants the v0.1.0 implementation
-must preserve and the tests that must demonstrate them.
+**Status:** v0.1.0 implementation and off-device failure evidence complete; target qualification
+pending. This file states the invariants the implementation preserves; see
+[`v0.1.0-evidence.md`](v0.1.0-evidence.md). The terminal guard cannot protect against arbitrary
+privileged deletion of all rules/tables or malicious foreign state; the boot window remains a named
+non-guarantee until hardware qualification.
 
 ## 1. Primary invariant
 

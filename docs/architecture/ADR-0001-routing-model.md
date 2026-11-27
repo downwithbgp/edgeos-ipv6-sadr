@@ -1,8 +1,28 @@
 # ADR-0001 — IPv6 SADR routing model
 
-**Status:** proposed for architecture review. Implementation and hardware qualification are pending.
+**Status:** architecture accepted; v0.1.0 implementation complete off-device and under review.
+Hardware qualification is pending and separately authorized.
 **Date:** 2026-11-27
 **Target:** Ubiquiti EdgeRouter X / ER-e50, EdgeOS 3.0.1 build 5862409, Linux 4.14.54-UBNT, mipsel.
+
+## v0.1.0 implementation status (2026-11-27)
+
+The accepted model is implemented on `feat/v0.1.0` (`22ee8fb`, `b3c12ea`, `934b97f`, `c2304db`,
+`2d25ea6`): internal whitelist table `10000`, provider tables, permanent terminal guards at slot 6,
+provider-table internal guards, active/staging pairs 0/1 and 2/3, conservative kernel-connected
+internal classification, declarative active-config reconciliation with generation recheck,
+journal/manifest/status, health including `orphaned-guard`, early boot guard, monitor and a Debian
+package.
+
+Implementation note: the operational route diagnostic uses named selectors
+(`show ipv6-sadr route source <source> destination <destination>`) because adjacent positional tags
+were not evidenced in the inspected vendor templates. The CLI form is
+`vyatta-ipv6-sadr route --source ... --destination ...`.
+
+Evidence is in [`../v0.1.0-evidence.md`](../v0.1.0-evidence.md); the qualification and migration
+designs are separate documents. Target configuration-engine priority/visibility/rollback, kernel
+4.14 RPDB, hardware offload and source selection remain Unverified. Milestones M4/M5/M6 are
+post-v0.1.0.
 
 ## 1. Context
 
