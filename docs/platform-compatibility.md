@@ -1,5 +1,8 @@
 # Platform compatibility
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 **Status:** architecture phase. No installable package exists and no compatibility claim has been
 qualified on hardware.
 

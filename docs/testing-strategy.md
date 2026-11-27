@@ -1,5 +1,8 @@
 # Testing strategy
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 **Status:** architecture-phase strategy. The executable lab is in `test/integration/`; the
 production unit/mock suite is a v0.1.0 deliverable.
 

@@ -1,14 +1,17 @@
 # Repository instructions for agents
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 ## Mission and current phase
 
 `edgeos-ipv6-sadr` provides native, persistent IPv6 source-address-dependent routing (SADR) on
 Ubiquiti EdgeOS without NAT66, NPTv6 or address translation.
 
-**Current phase: architecture review.** The architecture proposal, target investigation, experiment
-record and executable Linux proof of concept are complete. **Do not** produce a production Debian
-package, modify the maintainer's live router configuration, install packages on it, tag a release or
-publish artifacts until the architecture review gate is passed.
+**Current phase: v0.1.0 implementation.** The architecture is approved. Implement the production
+reconciler, native templates/services, tests and packaging on branch `feat/v0.1.0`. Do not install on
+the production router, migrate the manual table/rules, publish a release or claim hardware
+qualification in this phase.
 
 Current artifacts:
 
@@ -67,8 +70,12 @@ Keep raw router output and real addresses out of the repository.
 ```text
 spec/architecture-phase/   planning artifacts for the current phase
 docs/                      durable requirements, investigation, architecture, testing strategy
-test/integration/          privileged network-namespace proof of concept
-test/unit/                 fast, unprivileged checks
+src/                       production Perl module and CLI
+templates/                 EdgeOS configuration and operational templates
+systemd/                   monitor and early boot guard units
+debian/                    Debian packaging
+test/integration/          privileged network-namespace tests
+test/unit/                 fast, unprivileged and property tests
 .github/workflows/         CI
 ```
 

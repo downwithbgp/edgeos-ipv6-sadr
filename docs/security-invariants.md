@@ -1,5 +1,8 @@
 # Security and correctness invariants
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 **Status:** architecture-phase contract. This file states the invariants the v0.1.0 implementation
 must preserve and the tests that must demonstrate them.
 

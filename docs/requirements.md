@@ -1,5 +1,8 @@
 # Requirements and routing contract
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 **Status:** architecture-phase contract. The recommended mechanism is in
 [`architecture/ADR-0001-routing-model.md`](architecture/ADR-0001-routing-model.md). Implementation and
 hardware qualification are pending.

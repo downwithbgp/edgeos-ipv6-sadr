@@ -1,5 +1,8 @@
 # Operations and diagnostics
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 **Status:** proposed for v0.1.0. Command names and exact output are illustrative until the
 configuration/operational templates are implemented and reviewed.
 
