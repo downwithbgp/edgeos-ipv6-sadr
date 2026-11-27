@@ -1,11 +1,19 @@
 # ADR-0002 — SADR implementation review: RPDB vs native source-specific FIB
 
-**Status:** Proposed for maintainer decision at the Phase VI-A architecture gate. No production
-mutation, second backend, R1 or R2 is authorized by this document. R1 is suspended.
+**Status:** Accepted (Phase VI-B maintainer decision, 2026-11-27) with the qualifications below. No
+production mutation, second backend, R1 or R2 is authorized by this document. R1 is not run.
 **Date:** 2026-11-27
 **Target:** Ubiquiti EdgeRouter X / ER-e50, EdgeOS 3.0.1 build 5862409, Linux 4.14.54-UBNT, MT7621.
 **Supersedes/extends:** ADR-0001 routing model (accepted); this review re-tests the alternative rather
 than assuming the existing RPDB choice or native FIB is optimal.
+
+**Maintainer acceptance (Phase VI-B):** RPDB is retained as the production SADR implementation with
+the internal-whitelist table and per-policy provider tables; broad main-table suppression is
+rejected; no second production backend is developed; all Phase V and VI-A evidence is preserved.
+Native source-specific FIB is rejected for this project's requirements and this target platform, not
+as a universally inferior routing architecture. Acceptance is subject to the formal invariants in
+`docs/architecture/architecture-invariants.md` and the hardware-offload correctness gate in
+`docs/phase-vi-b/hnat-analysis.md` and `docs/phase-vi-b/qualification-plan.md`.
 
 ## 1. Decision
 
@@ -24,8 +32,8 @@ a packet with a provider-A source must not egress provider B, while internal des
 reachable and no NAT66/NPTv6 is allowed. The ER-X has two providers, local VLANs, a lab VXLAN
 (`vxlan<lab>`), a Route64 VXLAN (`vxlan<route64>`) and a HE tunnel. The production firewall's
 `SERVERv6_IN-30` drops server-VLAN destinations in `IPV6_LOCAL_NETS`; Phase V-C's A1 baseline
-therefore failed at the firewall, not at the routing model. R1 is suspended and no firewall
-exception is authorized.
+therefore failed at the firewall, not at the routing model. R1 is retired (Phase VI-B) and no
+firewall exception is authorized.
 
 ## 3. Options compared
 
@@ -68,8 +76,10 @@ link-event repaired.
 **Offload:** unverified. The target GPL source has `CONFIG_RA_HW_NAT=y`, `CONFIG_HNAT_V2=y`,
 `CONFIG_RA_HW_NAT_IPV6=y`, `CONFIG_RA_HW_NAT_TBL_16K=y`, `CONFIG_PPE_MCAST=y`, with
 `RA_HW_NAT_BINDING_THRESHOLD=30`. The HNAT/PPE has no policy/ACL stage in this build; a flow binds
-after ~30 pps and ages out in ~5 s (TCP/UDP/other), so an already-bound flow's egress is frozen
-until ageout. This is a **correctness gate**, not only performance: an RPDB rule/table change may
+after a rate threshold of 30 (unit not documented; observed ~30 pps) and ages out after a register
+delta of 5 (unit undocumented; observed ~5 s for TCP/UDP/other); the age-out is an idle timeout, so
+active flows may keep an entry alive (Strongly indicated). An already-bound flow's egress is frozen
+until the entry is removed. This is a **correctness gate**, not only performance: an RPDB rule/table change may
 not move an existing flow immediately. See §7.
 
 ### B — Native source-specific IPv6 FIB
@@ -194,13 +204,15 @@ ownership boundary. Reject.
 
 ## 7. Hardware-offload risk and revised target qualification plan
 
-**Risk (target source, strongly indicated):** HNAT/PPE binds a flow after the 30-pps threshold and
-caches its egress for ~5 s (TCP/UDP/other). There is no policy/ACL stage in this build. A source
-policy/rule/table change does not move an already-bound flow until ageout; a fail-closed guarantee
-therefore has an ageout-sized hole unless offload is disabled for the guarded prefixes/class or the
-fast path is proven to re-evaluate the policy. The `hw-tc-offload` NIC feature is not HNAT evidence.
-The actual bind-path fields (table id vs only oif, source, FIB) are not source-verified to line
-level and remain a target gate.
+**Risk (target source):** HNAT/PPE binds a flow after the 30-unit threshold and caches its egress;
+the age-out is an idle timeout (register delta 5, unit undocumented; observed ~5 s), and active flows
+may keep an entry alive (Strongly indicated). There is no policy/ACL stage in this build. A source
+policy/rule/table change does not move an already-bound flow until the entry is removed; a
+fail-closed guarantee therefore has an ageout-or-longer hole unless offload is disabled for the
+guarded prefixes/class or the fast path is proven to re-evaluate the policy. The `hw-tc-offload` NIC
+feature is not HNAT evidence. The bind path is now source-verified (bind in `ndo_start_xmit`; the FOE
+entry records the L2 rewrite and L3/L4 tuple, not a table/rule identity), while fast-path behaviour
+remains a target gate (`docs/phase-vi-b/hnat-analysis.md`).
 
 **Revised target qualification plan (no production offload/configuration change in Phase VI-A):**
 
@@ -225,8 +237,8 @@ level and remain a target gate.
 
 ## 8. R1 topology reconsideration (no firewall exception)
 
-The Phase V-C A1 block is the production server-VLAN firewall, not the SADR model. R1 is suspended;
-no firewall exception is authorized. Future R1 topology options, best first:
+The Phase V-C A1 block is the production server-VLAN firewall, not the SADR model. R1 is retired
+(Phase VI-B); no firewall exception is authorized. Future R1 topology options, best first:
 
 1. **Isolated lab ER-X** with the same firmware/hardware: run the actual R1 A/B/A and offload
    qualification there; no production router mutation and no firewall change. This is the preferred
@@ -252,7 +264,8 @@ mutation boundary.
 1. Retain the RPDB internal-whitelist architecture and the existing production reconciler. Do not
    adopt native source-specific FIB or implement a second production backend.
 2. Keep the broad `main suppress_prefixlength 0` construction rejected; do not reintroduce it.
-3. Keep R1 suspended and create no firewall exception in Phase VI-A. Prefer the isolated lab ER-X
+3. Keep R1 not run and create no firewall exception (Phase VI-A recommendation; the Phase V-C
+   authorization is retired in Phase VI-B). Prefer the isolated lab ER-X
    for R1; if the production ER-X is required, use the existing permitted lab VXLAN path under a
    fresh separate R1 authorization, not a firewall exception.
 4. Authorize the offload/target qualification plan above; do not change production offload.
@@ -264,8 +277,8 @@ mutation boundary.
 - Target `ip -6 route add ... from` execution, `proto 194` rendering and source-specific forwarding
   semantics (the target usage shows `from` only in the `route get` synopsis; upstream 4.14 indicates
   the add parser; add not executed).
-- HNAT/PPE bind-path fields (table id/source/FIB), IPv6 offload default and whether a bind freezes
-  policy changes for the full ageout.
+- HNAT fast-path behaviour, whether an active flow keeps a stale entry indefinitely, and whether a
+  bind freezes policy changes beyond the measured ageout (Phase VI-B analysis).
 - `CONFIG_IPV6=m` boot/module-reload RPDB state and early-guard ordering.
 - Config-engine priority/visibility/rollback and boot ordering.
 - R1 topology choice (isolated ER-X vs production lab VXLAN vs dedicated test VLAN/firewall

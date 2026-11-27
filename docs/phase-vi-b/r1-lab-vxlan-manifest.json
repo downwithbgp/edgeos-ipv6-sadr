@@ -1,0 +1,53 @@
+{
+  "schema": "sadr-r1-lab-vxlan-candidate/1",
+  "status": "prepared-not-authorized",
+  "generated_utc": "2026-11-27",
+  "test_ids": [
+    "R1-guard-only"
+  ],
+  "topology": {
+    "target": "production ER-X / ER-e50, EdgeOS 3.0.1.5862409, Linux 4.14.54-UBNT",
+    "device_fingerprint": "0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440",
+    "path": "existing lab VXLAN (target vxlan<lab>, controller vxlan<lab-peer>)",
+    "firewall_change": "none",
+    "production_mutation": "one RPDB rule only",
+    "offload_state": "software path only; HNAT correctness not established"
+  },
+  "mutation_scope": {
+    "rule": "from fd42:901::a1/128 unreachable pref <PREF>",
+    "max_duration_seconds": 120,
+    "device_timer": "systemd-run armed before the rule; independent backstop",
+    "cleanup": "r1-cleanup.sh exact deletion, foreign/ambiguous refused, idempotent, verified",
+    "persistent_change": "none"
+  },
+  "observations": {
+    "phases": "A1 baseline, B with rule, A2 after exact deletion",
+    "matching_probes": 20,
+    "control_probes": 10,
+    "protocols": [
+      "UDP"
+    ],
+    "router_path_proof": "router MAC, hop limit decremented, no direct L2, no upstream escape",
+    "production_invariants": "protected rules 10410-10414, table 41913 count, BGP state, default routes, memory",
+    "capture": "independent controller-side E1/E2 captures; raw data outside the repository"
+  },
+  "candidate_binding": {
+    "execution_manifest": "docs/r1-execution-manifest.json",
+    "execution_manifest_sha256": "a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0",
+    "adapter_sha256": "14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc",
+    "cleanup_sha256": "0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883",
+    "install_sha256": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f"
+  },
+  "required_change_before_execution": "the adapter must accept an explicit controller interface/gateway override; derive_local_path currently uses the IPv4 default-route interface and the IPv6 default gateway, which is not the lab VXLAN on the controller. After the change, regenerate the execution manifest and the candidate hashes and reissue this request. If TCP probes are required, add TCP support to the adapter and re-hash before execution.",
+  "tooling_schema_note": "This is a request manifest, not the schema consumed by qualification/authorization.py; a fresh docs/r1-authorization-candidate.json in the tooling schema must be generated after the adapter change.",
+  "authorization": {
+    "status": "not authorized",
+    "not_after": "<MAINTAINER-SET-UTC-DEADLINE>",
+    "approval_reference": ""
+  },
+  "limitations": [
+    "software path only; cannot establish G1 hardware-offload correctness",
+    "no provider withdrawal/restoration, BGP dynamics, performance, reboot/module lifecycle or commit/rollback",
+    "one permitted path; one rule; no R2"
+  ]
+}

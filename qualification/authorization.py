@@ -26,6 +26,9 @@ try:
 except (OSError, ValueError) as exc:
     fail(exc, 2)
 
+if isinstance(auth, dict) and auth.get("status") == "retired":
+    fail("authorization is retired and cannot be used", 16)
+
 for key in ("device_id", "profile", "target_class", "test_ids",
             "max_duration_seconds", "approved_mutation_scope", "recovery",
             "not_after", "device_fingerprint"):

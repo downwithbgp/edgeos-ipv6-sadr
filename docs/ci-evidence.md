@@ -163,7 +163,9 @@ difference: `lint-and-unit` failed on SC2329 (indirect trap functions in `r1-can
 Local evidence for `67d9ac5`: `make lint`; `make test` (619 unit/property/failure assertions plus
 qualification: profile/baseline/preflight/mutating result paths, cleanup 19/19, identity 14/14,
 manifest 4/4); package lifecycle and reproducibility; netns **145/0** plus R1 simulation **10/0**.
-The final execution manifest is `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`;
+The final V-C execution manifest is `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`;
+Phase VI-B later regenerated it to `a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0`
+after the retired-candidate refusal; the CI runs recorded here remain bound to the V-C manifest.
 the standalone A1 baseline is recorded in `docs/r1-execution-evidence.md` (Stage 0/1 pass; A1
 0/20 matching + 0/10 control; SERVERv6_IN-30 107→137; no mutation; R1 not run). No product
 source/package content changed in Phase V-C; the package hash remains

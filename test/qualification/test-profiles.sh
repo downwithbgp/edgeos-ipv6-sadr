@@ -331,6 +331,11 @@ expect_fail "authorization rejects wrong device" \
 expect_fail "authorization rejects wrong profile" \
     python3 "$ROOT/qualification/authorization.py" --file "$AUTH" --profile isolated \
         --device ER-X-TEST --test-id R1-guard-only
+RETIRED="$TMP/retired.json"
+write_auth "$RETIRED" canary production '{"status": "retired"}'
+expect_fail "authorization rejects a retired candidate" \
+    python3 "$ROOT/qualification/authorization.py" --file "$RETIRED" --profile canary \
+        --device ER-X-TEST --test-id R1-guard-only
 NO_ADAPTER="$TMP/no-adapter.json"
 write_auth "$NO_ADAPTER" canary production
 python3 - "$NO_ADAPTER" <<'PY'

@@ -10,6 +10,7 @@ hardware-qualified product.
 - **BLOCKED** — prerequisite/authorization missing; cannot execute safely.
 - **NOT RUN** — not attempted.
 - **SUSPENDED** — deliberately withheld pending a review or maintainer decision; not executed.
+- **RETIRED** — a grant withdrawn without execution; it cannot be used and is not consumed.
 
 ## 2. Current release-blocking status
 
@@ -25,11 +26,15 @@ hardware-qualified product.
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
 | Production canary R1 (off-device readiness) | PASS | execution manifest binds 11 files; adapter/cleanup candidate hashes tested; qualification profile gates, cleanup 19/19, identity 14/14, manifest 4/4; install/cleanup lock and closed-state tests; generic-Linux A/B/A 10/10; netns 145/0 |
 | Production canary R1 (A1 baseline, target) | BLOCKED (production IPv6 firewall) | Stage 0/1 pass; A1 0/20 matching + 0/10 control; ER-X `SERVERv6_IN-30` drop counter +30; E1 probes reached the router MAC; E2 received 0; no mutation boundary, rule, timer or runtime dir; protected state and table 41913 unchanged |
-| Production canary R1 (target execution) | SUSPENDED (Phase VI-A) | architecture review in progress; R1 not run; no firewall exception authorized or created; the conditionally renewed authorization remains unconsumed; see docs/phase-vi-a/disposition.md |
+| Production canary R1 (target execution) | RETIRED (Phase VI-B) | the Phase V-C conditional authorization is retired without execution and without being consumed; R1 remains NOT RUN; no firewall exception authorized or created; a fresh candidate-bound authorization is required; see docs/phase-vi-b/ |
+| SADR architecture acceptance (Phase VI-A/B) | PASS | ADR-0002 accepted; invariants I1–I9 formalized; RPDB internal-whitelist retained; native source-specific FIB rejected for this project/target; no second backend |
+| Hardware offload correctness (G1) | BLOCKED | source-backed analysis: HNAT binds after the stack, has no route/RPDB invalidation, writes the bind timestamp once (active flows can keep a stale egress — Strongly indicated), bound flows bypass netfilter, and no per-prefix exclusion exists; target qualification not run; release-blocking; see docs/phase-vi-b/ |
+| IPv6 module/boot lifecycle (G2) | BLOCKED | `CONFIG_IPV6=m`; no target boot trace or module-reload evidence; early guard hardware-unverified |
+| Target qualification — Environment A (dedicated ER-X) | NOT RUN | plan and authorization request prepared; dedicated hardware not available/authorized |
+| Target qualification — Environment B (lab-VXLAN R1) | NOT RUN | request prepared and not authorized; adapter topology override and candidate regeneration required; software path only |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
 | Configuration transaction/rollback | BLOCKED | target engine behavior unverified; simulation only |
 | Boot ordering/failure propagation | BLOCKED | no target boot trace; guard failure does not block router by design |
-| Hardware offload correctness | BLOCKED | HWNAT configured and module loaded; statistics unavailable and no accelerated flow demonstrated; R1 does not test the fast path |
 | BGP/VXLAN/firewall coexistence | BLOCKED | production impact requires maintenance authorization; IPv6 BGP command form unverified |
 | Source selection | BLOCKED | target local/unbound behavior not tested |
 | Target emulation | BLOCKED | no exact firmware rootfs/userspace or MIPS runner |

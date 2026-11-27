@@ -5,9 +5,11 @@ no production mutation was attempted.** No RPDB rule, device timer, runtime dire
 configuration change or controller namespace remains. Table `41913` and rules `10410–10414` are
 unchanged. Raw captures and run directories remain outside the repository.
 
-**Phase VI-A disposition:** Phase V-C is accepted; R1 remains NOT RUN and is suspended under the
-outstanding conditional authorization pending the architecture review. No firewall exception is
-authorized or created. Evidence and implementation are preserved; PR #1 remains draft.
+**Phase VI-A/VI-B disposition:** Phase V-C is accepted; R1 remains NOT RUN. The Phase V-C
+conditional authorization was suspended in Phase VI-A and is **retired without execution** in Phase
+VI-B (not consumed). No firewall exception is authorized or created. Evidence and implementation are
+preserved; PR #1 remains draft. Future execution requires a fresh candidate-bound authorization; the
+revised lab-VXLAN topology and manifest are prepared (not executed) in `docs/phase-vi-b/`.
 
 ## 1. Phase V-B abort — root cause
 
@@ -53,7 +55,10 @@ deployment:
   the preflight and post-A1 checks compare protected rules, table `41913`, default routes, BGP and
   available memory.
 
-Manifest: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
+Manifest at the V-C run: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
+Phase VI-B regenerated the manifest to `a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0`
+after adding the retired-candidate refusal to `qualification/authorization.py`; the V-C evidence above
+remains bound to `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
 Frozen device executables: adapter `14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc`,
 cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
 install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.
