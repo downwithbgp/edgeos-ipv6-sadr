@@ -9,6 +9,7 @@ hardware-qualified product.
 - **FAIL** — executed and failed.
 - **BLOCKED** — prerequisite/authorization missing; cannot execute safely.
 - **NOT RUN** — not attempted.
+- **SUSPENDED** — deliberately withheld pending a review or maintainer decision; not executed.
 
 ## 2. Current release-blocking status
 
@@ -24,7 +25,7 @@ hardware-qualified product.
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
 | Production canary R1 (off-device readiness) | PASS | execution manifest binds 11 files; adapter/cleanup candidate hashes tested; qualification profile gates, cleanup 19/19, identity 14/14, manifest 4/4; install/cleanup lock and closed-state tests; generic-Linux A/B/A 10/10; netns 145/0 |
 | Production canary R1 (A1 baseline, target) | BLOCKED (production IPv6 firewall) | Stage 0/1 pass; A1 0/20 matching + 0/10 control; ER-X `SERVERv6_IN-30` drop counter +30; E1 probes reached the router MAC; E2 received 0; no mutation boundary, rule, timer or runtime dir; protected state and table 41913 unchanged |
-| Production canary R1 (target execution) | NOT RUN | A1 did not pass; the conditionally renewed mutating authorization is not consumed and no R1 B/A2 was attempted |
+| Production canary R1 (target execution) | SUSPENDED (Phase VI-A) | architecture review in progress; R1 not run; no firewall exception authorized or created; the conditionally renewed authorization remains unconsumed; see docs/phase-vi-a/disposition.md |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
 | Configuration transaction/rollback | BLOCKED | target engine behavior unverified; simulation only |
 | Boot ordering/failure propagation | BLOCKED | no target boot trace; guard failure does not block router by design |

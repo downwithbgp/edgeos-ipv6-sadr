@@ -1,12 +1,10 @@
 # R1 canary — execution-ready proposal
 
-**Status:** execution-ready design; **no production mutation is authorized by this document.**
-Phase V-C executed the corrected Stage 0–2 A1 baseline read-only on the target: Stage 0/1 passed, but
-A1 delivered 0/20 matching + 0/10 control because the production IPv6 firewall `SERVERv6_IN-30`
-drops server-VLAN destinations in `IPV6_LOCAL_NETS` (drop counter 107→137). R1 is not run. The smallest
-necessary change is a temporary exact IPv6 firewall exception for the synthetic tuple (or an approved
-alternate endpoint); see `docs/r1-execution-evidence.md`. Table `41913` and rules `10410–10414` remain
-protected foreign state; the product package is unchanged.
+**Status:** SUSPENDED (Phase VI-A architecture review). **No production mutation or firewall
+exception is authorized.** Phase V-C's A1 baseline was blocked by the production IPv6 firewall
+`SERVERv6_IN-30` (drop counter 107→137); R1 is not run. The R1 topology alternatives and the
+architecture decision are in `docs/phase-vi-a/` and ADR-0002. Table `41913` and rules `10410–10414`
+remain protected foreign state; the product package is unchanged.
 
 ## 1. Target identity and corrected offload inventory
 

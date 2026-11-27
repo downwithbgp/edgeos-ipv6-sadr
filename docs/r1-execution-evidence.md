@@ -5,6 +5,10 @@ no production mutation was attempted.** No RPDB rule, device timer, runtime dire
 configuration change or controller namespace remains. Table `41913` and rules `10410–10414` are
 unchanged. Raw captures and run directories remain outside the repository.
 
+**Phase VI-A disposition:** Phase V-C is accepted; R1 remains NOT RUN and is suspended under the
+outstanding conditional authorization pending the architecture review. No firewall exception is
+authorized or created. Evidence and implementation are preserved; PR #1 remains draft.
+
 ## 1. Phase V-B abort — root cause
 
 The previous mutating attempt aborted in Stage 0 controller preparation, before any target
@@ -115,6 +119,11 @@ synthetic test tuple only (selector/control source to the test destination, UDP/
 the test window and automatically removed with the rule cleanup. An approved alternative endpoint
 or an existing permitted test path would avoid the firewall change. Both require explicit
 maintainer authorization; the production firewall was not modified.
+
+**Phase VI-A update:** R1 remains suspended and this exception is not authorized.
+`docs/phase-vi-a/r1-topology-alternatives.md` evaluates the isolated lab ER-X and the existing
+permitted lab-VXLAN path first; the firewall exception remains a last option requiring separate
+justification and authorization.
 
 ## 7. Gates and artifacts
 
