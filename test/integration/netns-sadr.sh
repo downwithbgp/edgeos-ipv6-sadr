@@ -879,6 +879,9 @@ run er ip -6 route del unreachable default from "$PA_PFX" metric 4096 proto 194 
 run er ip -6 route del default from "$PB_PFX" via "$PB_NH" dev er_pb metric 1024 proto 194 2>/dev/null || true
 run er ip -6 route del unreachable default from "$PB_PFX" metric 4096 proto 194 2>/dev/null || true
 
+# ---------------------------------------------------------------- production
+source "$ROOT/test/integration/production-phase.sh"
+
 say ""
 say "netns: pass=$PASS fail=$FAIL"
 say "captures and logs: $CAP"
