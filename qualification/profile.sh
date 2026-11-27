@@ -3,8 +3,11 @@
 # Production-aware qualification profiles. Default is Plan; no router contact.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=/dev/null
+. "$ROOT/qualification/lib/identity.sh"
 PROFILE=plan
 MODE=plan
+PREFLIGHT=0
 ROUTER=""
 DEVICE_ID=""
 FIRMWARE=""
@@ -23,7 +26,7 @@ MAXDUR=0
 CLEANUP_TIMEOUT=30
 MUTATION_STARTED=0
 CLEANED=0
-SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8)
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -o UserKnownHostsFile="${SADR_QUAL_KNOWN_HOSTS:-$HOME/.ssh/known_hosts}" -i "${SADR_QUAL_SSH_KEY:-$HOME/.ssh/id_ed25519}")
 
 usage() {
     cat >&2 <<'EOF'
@@ -31,6 +34,7 @@ usage: qualification/profile.sh --profile plan|observe|canary|maintenance|isolat
 
   --plan                      render the profile plan (default)
   --execute                   execute an authorized profile
+  --preflight                 read-only preflight through the real execution path
   --authorize                 acknowledge explicit scoped authorization
   --profile NAME              plan|observe|canary|maintenance|isolated
   --test-id ID                exact authorized test id (canary/maintenance)
@@ -58,6 +62,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --plan) MODE=plan; shift ;;
         --execute) MODE=execute; shift ;;
+        --preflight) PREFLIGHT=1; shift ;;
         --authorize) AUTHORIZED=1; shift ;;
         --profile) [ $# -ge 2 ] || usage; PROFILE=$2; shift 2 ;;
         --test-id) [ $# -ge 2 ] || usage; TEST_ID=$2; shift 2 ;;
@@ -237,27 +242,21 @@ if [ "$PROFILE" = "isolated" ]; then
         --artifact "$ARTIFACT" --config "$CONFIG" --out "$OUT"
 fi
 
-set +e
-identity=$(ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -r; cat /proc/device-tree/model 2>/dev/null || true; cat /sys/class/net/eth0/address 2>/dev/null || true' 2>&1)
-rc=$?
-set -e
-version=$(printf '%s\n' "$identity" | sed -n '1p')
-kernel=$(printf '%s\n' "$identity" | sed -n '2p')
-model=$(printf '%s\n' "$identity" | sed -n '3p')
-mac=$(printf '%s\n' "$identity" | sed -n '4p')
-fp=$(printf '%s\n%s\n' "$model" "$mac" | sha256sum | awk '{print $1}')
 preflight_step="Verify exact firmware/kernel"
 if [ -n "$DEVICE_ID" ]; then preflight_step="Verify exact firmware/kernel/device"; fi
-if [ "$rc" -ne 0 ] || ! printf '%s' "$version" | grep -Eq '^EdgeRouter\.ER-e50\.v3\.0\.1\.5862409\.' \
-    || [ "$kernel" != "4.14.54-UBNT" ] \
-    || { [ -n "$FIRMWARE" ] && [ "$version" != "$FIRMWARE" ]; } \
-    || { [ -n "$DEVICE_ID" ] && ! printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; } \
-    || { [ -n "$DEVICE_FP" ] && [ "$fp" != "$DEVICE_FP" ]; }; then
-    record preflight "$preflight_step" fail "unexpected identity or fingerprint" "ssh identity"
+# shellcheck disable=SC2034 # consumed by the sourced identity helper
+SADR_SSH_OPTS=("${SSH_OPTS[@]}")
+# shellcheck disable=SC2034
+SADR_SSH_KEY=${SADR_QUAL_SSH_KEY:-}
+if ! sadr_identity_acquire "$ROUTER" || ! sadr_identity_validate "$FIRMWARE" "4.14.54-UBNT" "$DEVICE_FP" "$DEVICE_ID"; then
+    record preflight "$preflight_step" fail "identity acquisition/validation failed" "shared framed identity"
     report execute
     exit 1
 fi
-record preflight "$preflight_step" pass "version=$version kernel=$kernel fingerprint=$fp" "ssh identity"
+version=$SADR_ID_VERSION
+kernel=$SADR_ID_KERNEL
+fp=$SADR_ID_FINGERPRINT
+record preflight "$preflight_step" pass "version=$version kernel=$kernel fingerprint=$fp" "shared framed identity"
 record independent-management "Operator attests independent management and rollback path" pass \
     "operator attestation, not independently verified: $RECOVERY" "operator attestation"
 
@@ -313,6 +312,27 @@ else
     report execute
     exit 1
 fi
+if [ "$PREFLIGHT" -eq 1 ]; then
+    if [ -z "${SADR_QUAL_ADAPTER_PATH:-}" ]; then
+        record preflight "Adapter preflight" fail "no bound adapter path" "SADR_QUAL_ADAPTER_PATH"
+        report execute
+        check_complete
+        exit 1
+    fi
+    set +e
+    pf_out=$(timeout "$MAXDUR" bash -c "bash '$SADR_QUAL_ADAPTER_PATH' --preflight" 2>"$OUT/preflight.stderr")
+    pf_rc=$?
+    set -e
+    if [ "$pf_rc" -eq 0 ] && printf '%s' "$pf_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True' >/dev/null 2>&1; then
+        record preflight "Adapter preflight" pass "read-only adapter preflight passed" "SADR_QUAL_ADAPTER_PATH --preflight"
+    else
+        record preflight "Adapter preflight" fail "adapter preflight failed rc=$pf_rc: $(printf '%s' "$pf_out" | tail -c 300)" "SADR_QUAL_ADAPTER_PATH --preflight"
+    fi
+    report execute
+    check_complete
+    exit 0
+fi
+
 if [ "$PROFILE" = "canary" ]; then
     var=SADR_QUAL_CANARY_CMD; id=canary
 else

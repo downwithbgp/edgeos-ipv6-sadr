@@ -175,10 +175,9 @@ sudo -E \
 
 ## 11. Executable hashes and off-device evidence
 
-| Artifact | SHA-256 |
-|---|---|
-| `qualification/adapters/r1-canary.sh` | `f89d91e3e603c8dd37ab476ae8fbc3c7654386e5660b75389825d3fec0a9bd12` |
-| `qualification/adapters/r1-cleanup.sh` | `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883` |
+Executable and dependency hashes are generated and validated by
+`qualification/finalize-candidate.sh` and bound in the single authorization candidate
+(`docs/r1-authorization-candidate.json`); `test/qualification/test-cleanup.sh` validates them.
 
 Off-device evidence: qualification plan/profile/cleanup tests pass (42 + 19 assertions); the
 generic-Linux A/B/A simulation passes 8/8 and the full netns suite 145/0. These are generic-Linux

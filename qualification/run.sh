@@ -8,6 +8,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=/dev/null
+. "$ROOT/qualification/lib/identity.sh"
 MODE=plan
 ROUTER=""
 ARTIFACT=""
@@ -183,22 +185,16 @@ command -v scp >/dev/null 2>&1 || { echo "FAIL: scp required" >&2; exit 2; }
 
 # Real preflight/backup/install/verify steps. Adapters cover topology-specific
 # packet, transition, boot and coexistence work.
-set +e
-identity=$(ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -r; cat /proc/device-tree/model 2>/dev/null || true' 2>&1)
-rc=$?
-set -e
-version=$(printf '%s\n' "$identity" | sed -n '1p')
-kernel=$(printf '%s\n' "$identity" | sed -n '2p')
-if [ "$rc" -eq 0 ] \
-    && printf '%s' "$version" | grep -Eq '^EdgeRouter\.ER-e50\.v3\.0\.1\.5862409\.' \
-    && [ "$kernel" = "4.14.54-UBNT" ] \
-    && { [ -z "$FIRMWARE" ] || [ "$version" = "$FIRMWARE" ]; } \
-    && { [ -z "$DEVICE_ID" ] || printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; }; then
+# shellcheck disable=SC2034 # consumed by the sourced identity helper
+SADR_SSH_OPTS=("${SSH_OPTS[@]}")
+# shellcheck disable=SC2034
+SADR_SSH_KEY=""
+if sadr_identity_acquire "$ROUTER" && sadr_identity_validate "$FIRMWARE" "4.14.54-UBNT" "" "$DEVICE_ID"; then
     record preflight "Verify exact EdgeOS firmware, kernel and device identity" pass \
-        "version=$version kernel=$kernel" "ssh identity"
+        "version=$SADR_ID_VERSION kernel=$SADR_ID_KERNEL fingerprint=$SADR_ID_FINGERPRINT" "shared framed identity"
 else
     record preflight "Verify exact EdgeOS firmware, kernel and device identity" fail \
-        "unexpected: $identity" "ssh identity"
+        "identity acquisition/validation failed" "shared framed identity"
     report_and_exit
 fi
 if [ "${SADR_QUAL_ISOLATED:-0}" = "1" ]; then

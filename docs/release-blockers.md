@@ -23,7 +23,7 @@ hardware-qualified product.
 | Phase V-A CI | PASS | `e5ff8fb`: push run 46028355899 and PR run 46028363022, all jobs success; R1 simulation in the netns job |
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
 | Production canary R1 (off-device readiness) | PASS | adapter/cleanup bound by SHA-256 (candidate hashes tested); qualification 42 + 19 assertions; install/cleanup lock and closed-state tests; generic-Linux A/B/A 8/8; netns 145/0 |
-| Production canary R1 (target execution) | ABORTED (pre-mutation) | first attempt aborted at the adapter self-hash before any router contact; no rule installed; corrected hashes and targeted tests pass; retry requires renewed authorization |
+| Production canary R1 (target execution) | ABORTED (harness, pre-rule) | real-target preflight **PASS 4/4**; mutating attempt stopped before phase A1; no rule/timer/runtime dir/namespace; protected state unchanged; authorization consumed; retry requires a new authorization |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
 | Configuration transaction/rollback | BLOCKED | target engine behavior unverified; simulation only |
 | Boot ordering/failure propagation | BLOCKED | no target boot trace; guard failure does not block router by design |

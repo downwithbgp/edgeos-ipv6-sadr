@@ -281,7 +281,7 @@ cat >"$TMP/bin/ssh" <<SH
 #!/bin/bash
 printf '%s\n' "\$*" >>"\$FAKE_SSH_LOG"
 case "\$*" in
-    *"uname -r"*) printf '%s\n' 'EdgeRouter.ER-e50.v3.0.1.5862409.test' '4.14.54-UBNT' '$DEV_MODEL' '$DEV_MAC'; exit 0 ;;
+    *"uname -r"*) printf '%s\n' 'Welcome to EdgeOS' '__SADR_ID_BEGIN__ 1' 'version=EdgeRouter.ER-e50.v3.0.1.5862409.test' 'kernel=4.14.54-UBNT' 'model=$DEV_MODEL' 'mac=$DEV_MAC' '__SADR_ID_END__ 1'; exit 0 ;;
     *) exit 0 ;;
 esac
 SH
@@ -425,7 +425,7 @@ echo "PASS: run.sh refuses a mismatched artifact hash"
 cat >"$TMP/bin/ssh" <<SH
 #!/bin/bash
 case "\$*" in
-    *"uname -r"*) printf '%s\n' 'EdgeRouter.ER-e50.v3.0.1.5862409.test' '4.14.54-UBNT' '$DEV_MODEL' '$DEV_MAC'; exit 0 ;;
+    *"uname -r"*) printf '%s\n' 'Welcome to EdgeOS' '__SADR_ID_BEGIN__ 1' 'version=EdgeRouter.ER-e50.v3.0.1.5862409.test' 'kernel=4.14.54-UBNT' 'model=$DEV_MODEL' 'mac=$DEV_MAC' '__SADR_ID_END__ 1'; exit 0 ;;
     *) exit 1 ;;
 esac
 SH

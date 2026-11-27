@@ -10,6 +10,9 @@
 #
 # Output: one JSON object on stdout (ok, probes, wrong_provider, notes).
 set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# shellcheck source=/dev/null
+. "$ROOT/qualification/lib/identity.sh"
 
 SELECTOR=${SADR_QUAL_SELECTOR:-fd42:901::a1}
 PREF=${SADR_QUAL_PRIORITY:-21031}
@@ -33,7 +36,7 @@ INSTALL_SHA=${SADR_QUAL_INSTALL_SHA256:-}
 SSH_KEY=${SADR_QUAL_SSH_KEY:-$HOME/.ssh/id_ed25519}
 MODE=plan
 OUT=${SADR_QUAL_OUT:-}
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=6 -o StrictHostKeyChecking=yes)
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=6 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${SADR_QUAL_KNOWN_HOSTS:-$HOME/.ssh/known_hosts}")
 
 usage() {
     cat >&2 <<'EOF'
@@ -50,6 +53,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --plan) MODE=plan; shift ;;
         --execute) MODE=execute; shift ;;
+        --preflight) MODE=preflight; shift ;;
         --out) [ $# -ge 2 ] || usage; OUT=$2; shift 2 ;;
         -h|--help) usage ;;
         *) usage ;;
@@ -144,15 +148,15 @@ if [ $((remaining - 15)) -lt "$DEADLINE" ]; then DEADLINE=$((remaining - 15)); f
 DEADLINE_EPOCH=$((now + DEADLINE))
 
 # ---- preflight (read-only) ----
-say "preflight: identity and fingerprint"
-identity=$(rssh 'cat /etc/version; uname -r; cat /proc/device-tree/model; cat /sys/class/net/eth0/address') || fail "identity read failed"
-version=$(printf '%s\n' "$identity" | sed -n '1p')
-kernel=$(printf '%s\n' "$identity" | sed -n '2p')
-model=$(printf '%s\n' "$identity" | sed -n '3p')
-mac=$(printf '%s\n' "$identity" | sed -n '4p')
-case "$version" in EdgeRouter.ER-e50.v3.0.1.5862409.*) ;; *) fail "unexpected firmware: $version" ;; esac
-[ "$kernel" = "4.14.54-UBNT" ] || fail "unexpected kernel: $kernel"
-[ "$(printf '%s\n%s\n' "$model" "$mac" | sha256sum | awk '{print $1}')" = "$FINGERPRINT" ] || fail "device fingerprint mismatch"
+say "preflight: identity and fingerprint (shared framed response)"
+# shellcheck disable=SC2034 # consumed by the sourced identity helper
+SADR_SSH_OPTS=("${SSH_OPTS[@]}")
+# shellcheck disable=SC2034
+SADR_SSH_KEY="$SSH_KEY"
+if ! sadr_identity_acquire "$ROUTER"; then fail "identity acquisition failed (transport or malformed response)"; fi
+if ! sadr_identity_validate "" "4.14.54-UBNT" "$FINGERPRINT" ""; then fail "identity validation/fingerprint mismatch"; fi
+version=$SADR_ID_VERSION
+kernel=$SADR_ID_KERNEL
 
 say "preflight: RPDB and protected state"
 rules_before=$(rssh "ip -6 rule show") || fail "rule read failed"
@@ -260,6 +264,12 @@ containment_check() {
     if printf '%s\n' "$state" | grep -Fq "$SELECTOR"; then fail "selector appeared in production state"; fi
 }
 containment_check
+
+if [ "$MODE" = "preflight" ]; then
+    say "preflight-only: identity, RPDB, cleanup mechanism and containment passed; no mutation, timer, deployment or namespace created"
+    emit true 0 0 "preflight passed: version=$version kernel=$kernel fingerprint=$FINGERPRINT egress_if=$PREFIX_IF"
+    exit 0
+fi
 
 ip netns del sadr-r1-e1 2>/dev/null || true
 ip netns del sadr-r1-e2 2>/dev/null || true
