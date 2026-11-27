@@ -1,0 +1,55 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -e
+
+# A removed package must not leave a configured source constrained by rules
+# that are no longer owned, and it must not silently discard live SADR state.
+[ "$1" = "remove" ] || exit 0
+
+CONFIG_BOOT=${EDGEOS_IPV6_SADR_CONFIG_BOOT:-/config/config.boot}
+API=${EDGEOS_IPV6_SADR_API:-/opt/vyatta/sbin/my_cli_shell_api}
+IP_BIN=${EDGEOS_IPV6_SADR_IP:-ip}
+fail=0
+
+if [ -r "$CONFIG_BOOT" ] && grep -q 'ipv6-sadr' "$CONFIG_BOOT"; then
+    echo "edgeos-ipv6-sadr: saved configuration still contains protocols ipv6-sadr" >&2
+    fail=1
+fi
+
+if [ -x "$API" ]; then
+    if ! active=$("$API" listActiveNodes protocols ipv6-sadr policy 2>/dev/null); then
+        echo "edgeos-ipv6-sadr: cannot read the active configuration" >&2
+        fail=1
+    elif [ -n "$active" ]; then
+        echo "edgeos-ipv6-sadr: active configuration still contains ipv6-sadr policies" >&2
+        fail=1
+    fi
+fi
+
+if command -v "$IP_BIN" >/dev/null 2>&1; then
+    if ! rules=$("$IP_BIN" -6 rule show 2>/dev/null); then
+        echo "edgeos-ipv6-sadr: cannot inspect IPv6 rules" >&2
+        fail=1
+    elif printf '%s\n' "$rules" | awk '
+        { p = $1; sub(/:$/, "", p); if (p + 0 >= 20000 && p + 0 <= 21031) found = 1 }
+        END { exit(found ? 0 : 1) }
+    '; then
+        echo "edgeos-ipv6-sadr: managed IPv6 rules remain installed" >&2
+        fail=1
+    fi
+
+    if ! routes=$("$IP_BIN" -6 route show table all 2>/dev/null); then
+        echo "edgeos-ipv6-sadr: cannot inspect IPv6 tables" >&2
+        fail=1
+    elif printf '%s\n' "$routes" | grep -q 'proto 194'; then
+        echo "edgeos-ipv6-sadr: extension-owned routes remain installed" >&2
+        fail=1
+    fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+    echo "edgeos-ipv6-sadr: refusal: remove the SADR configuration and let reconciliation clean up first" >&2
+    exit 1
+fi
+
+exit 0

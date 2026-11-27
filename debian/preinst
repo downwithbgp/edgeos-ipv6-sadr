@@ -1,0 +1,46 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -e
+
+case "$1" in
+    install|upgrade) ;;
+    *) exit 0 ;;
+esac
+
+# Test and CI escape hatch only. Production installation remains gated by the
+# firmware/kernel checks below and by separate authorization.
+if [ "${EDGEOS_IPV6_SADR_SKIP_PLATFORM_CHECK:-0}" = "1" ]; then
+    exit 0
+fi
+
+VERSION_FILE=${EDGEOS_IPV6_SADR_VERSION_FILE:-/etc/version}
+KERNEL=${EDGEOS_IPV6_SADR_KERNEL:-$(uname -r)}
+IP_BIN=${EDGEOS_IPV6_SADR_IP:-ip}
+
+if [ ! -r "$VERSION_FILE" ]; then
+    echo "edgeos-ipv6-sadr: cannot read $VERSION_FILE; unsupported platform" >&2
+    exit 1
+fi
+case "$(cat "$VERSION_FILE")" in
+    EdgeRouter.ER-e50.v3.0.1.5862409.*) ;;
+    *)
+        echo "edgeos-ipv6-sadr: unsupported EdgeOS firmware: $(cat "$VERSION_FILE")" >&2
+        exit 1
+        ;;
+esac
+
+if [ "$KERNEL" != "4.14.54-UBNT" ]; then
+    echo "edgeos-ipv6-sadr: unsupported kernel: $KERNEL" >&2
+    exit 1
+fi
+
+if ! "$IP_BIN" -6 rule show >/dev/null 2>&1; then
+    echo "edgeos-ipv6-sadr: required IPv6 RPDB support is unavailable" >&2
+    exit 1
+fi
+if ! "$IP_BIN" -6 route show table main >/dev/null 2>&1; then
+    echo "edgeos-ipv6-sadr: required IPv6 table support is unavailable" >&2
+    exit 1
+fi
+
+exit 0

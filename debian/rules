@@ -1,0 +1,42 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: GPL-2.0-only
+
+export DH_VERBOSE = 1
+export LC_ALL = C.UTF-8
+
+PKGDIR = $(CURDIR)/debian/edgeos-ipv6-sadr
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -d $(PKGDIR)/opt/vyatta/sbin
+	install -m 0755 src/vyatta-ipv6-sadr $(PKGDIR)/opt/vyatta/sbin/vyatta-ipv6-sadr
+	install -d $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR
+	install -m 0644 src/lib/EdgeOS/IPv6SADR.pm $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR.pm
+	install -m 0644 src/lib/EdgeOS/IPv6SADR/BootGuard.pm \
+	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/BootGuard.pm
+	install -m 0644 src/lib/EdgeOS/IPv6SADR/Health.pm \
+	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Health.pm
+	install -m 0644 src/lib/EdgeOS/IPv6SADR/Monitor.pm \
+	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Monitor.pm
+	install -m 0644 src/lib/EdgeOS/IPv6SADR/Reconcile.pm \
+	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Reconcile.pm
+	install -d $(PKGDIR)/opt/vyatta/share/vyatta-cfg/templates/protocols
+	cp -a templates/protocols/ipv6-sadr \
+	    $(PKGDIR)/opt/vyatta/share/vyatta-cfg/templates/protocols/
+	install -d $(PKGDIR)/opt/vyatta/share/vyatta-op/templates/show
+	cp -a templates/op/show/ipv6-sadr \
+	    $(PKGDIR)/opt/vyatta/share/vyatta-op/templates/show/
+	install -d $(PKGDIR)/lib/systemd/system
+	install -m 0644 systemd/edgeos-ipv6-sadr-guard.service \
+	    $(PKGDIR)/lib/systemd/system/edgeos-ipv6-sadr-guard.service
+	install -m 0644 systemd/edgeos-ipv6-sadr-monitor.service \
+	    $(PKGDIR)/lib/systemd/system/edgeos-ipv6-sadr-monitor.service
+
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip

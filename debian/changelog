@@ -1,0 +1,11 @@
+edgeos-ipv6-sadr (0.1.0) unstable; urgency=medium
+
+  * v0.1.0 implementation: production reconciler, native protocols
+    ipv6-sadr templates, show commands, early boot guard and event monitor.
+  * Off-device evidence only: 591 unit/property/failure assertions and
+    generic-Linux namespace packet-path transitions. No EdgeOS hardware,
+    production-router or release action occurred.
+  * Packaging is prepared for review; release publication remains disabled
+    pending hardware qualification.
+
+ -- Vadim Petrov <vadim@vadimpetrov.com>  Fri, 27 Nov 2026 06:00:00 +0000
