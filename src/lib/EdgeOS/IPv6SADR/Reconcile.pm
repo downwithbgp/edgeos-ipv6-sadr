@@ -77,7 +77,7 @@ sub _is_link_scope_prefix {
     return 1 unless $p;
     my $first = ord(substr($p->{packed}, 0, 1));
     return 1 if $first == 0xff;                                    # multicast
-    return 1 if $first == 0xfe && (ord(substr($p->{packed}, 1, 1)) & 0xc0) == 0x80; # link-local
+    return 1 if $first == 0xfe && ((ord(substr($p->{packed}, 1, 1)) & 0xc0) == 0x80); # link-local
     return 0;
 }
 
@@ -296,19 +296,21 @@ sub check_ownership {
     for my $table (sort { $a <=> $b } keys %tables) {
         my $t = $obs->{tables}{$table} or next;
         for my $r (@{ $t->{routes} }) {
+            my $desc = $r->{raw} // _route_key($r);
             if (!defined $r->{proto} || $r->{proto} != PROTO_MARKER()) {
-                push @conflicts, "table $table has a foreign route: $r->{raw}";
+                push @conflicts, "table $table has a foreign route: $desc";
                 next;
             }
             my $k = _route_key($r);
-            push @conflicts, "table $table has an unexpected route: $r->{raw}"
+            push @conflicts, "table $table has an unexpected route: $desc"
                 unless $exp_routes{$k} || $owned_routes{$k};
         }
     }
     for my $r (@{ $obs->{rules} }) {
         next unless $r->{pref} >= RULE_BASE() && $r->{pref} <= RULE_MAX();
         my $k = _rule_key($r);
-        push @conflicts, "managed rule range has an unexpected rule: $r->{raw}"
+        push @conflicts, "managed rule range has an unexpected rule: "
+            . ($r->{raw} // _rule_key($r))
             unless $exp_rules{$k} || $owned_rules{$k};
     }
     die "ownership conflict:\n" . join("\n", map { "  $_" } @conflicts) . "\n" if @conflicts;
@@ -360,6 +362,9 @@ sub plan {
             <=> (($b->{route} && $b->{route}{type} eq 'unreachable') ? 1 : 0))
         || (($a->{route} && $a->{route}{table} || $a->{rule} && $a->{rule}{pref} || 0)
             <=> ($b->{route} && $b->{route}{table} || $b->{rule} && $b->{rule}{pref} || 0))
+        || (($a->{route} ? _route_key($a->{route}) : _rule_key($a->{rule}))
+            cmp ($b->{route} ? _route_key($b->{route}) : _rule_key($b->{rule})))
+        || ($a->{op} cmp $b->{op})
     } @ops;
     return \@ops;
 }
@@ -527,8 +532,10 @@ sub reconcile {
             # this plan. Re-read immediately before mutation.
             if (defined $mode) {
                 my $fresh = $self->read_desired($mode);
-                die "desired state changed during reconciliation; retrying\n"
-                    if $fresh->{generation} ne $desired->{generation};
+                if ($fresh->{generation} ne $desired->{generation}) {
+                    $self->logmsg("desired state changed during reconciliation; retrying");
+                    next;
+                }
             }
             my $manifest = _manifest_from_expected($exp, $desired->{generation});
             _write_json_atomic("$self->{state_dir}/journal.json", {

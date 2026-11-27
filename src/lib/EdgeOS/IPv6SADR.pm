@@ -99,15 +99,15 @@ sub parse_addr {
     die "loopback IPv6 address not allowed: $canon\n" if $canon eq '::1';
     die "multicast IPv6 address not allowed: $canon\n" if $canon =~ /^ff/;
     die "IPv4-mapped IPv6 address not allowed: $canon\n" if $canon =~ /^::ffff:/;
-    return { str => $canon, packed => $packed, ll => is_link_local($canon) };
+    return { str => $canon, packed => $packed, ll => $class->is_link_local($canon) };
 }
 
 sub is_link_local {
-    my ($addr) = @_;
+    my ($self, $addr) = @_;
     my $packed = inet_pton(AF_INET6, $addr);
     return 0 unless defined $packed;
-    return (ord(substr($packed, 0, 1)) == 0xfe &&
-            (ord(substr($packed, 1, 1)) & 0xc0) == 0x80) ? 1 : 0;
+    return (ord(substr($packed, 0, 1)) == 0xfe
+            && ((ord(substr($packed, 1, 1)) & 0xc0) == 0x80)) ? 1 : 0;
 }
 
 sub prefix_overlaps {
@@ -661,12 +661,13 @@ sub route_lookup {
 sub validate_source_prefix {
     my ($self, $p) = @_;
     my $prefix = ref($p) eq 'HASH' ? $p : $self->parse_prefix($p);
+    my $first = ord(substr($prefix->{packed}, 0, 1));
+    die "source prefix must not be multicast: $prefix->{str}\n"
+        if ($first & 0xff) == 0xff;
+    die "source prefix must not be link-local: $prefix->{str}\n"
+        if $first == 0xfe && ((ord(substr($prefix->{packed}, 1, 1)) & 0xc0) == 0x80);
     die "source prefix must not be ::/0: $prefix->{str}\n" if $prefix->{len} == 0;
     die "source prefix must be at least /32: $prefix->{str}\n" if $prefix->{len} < 32;
-    my $first = ord(substr($prefix->{packed}, 0, 1));
-    die "source prefix must not be multicast: $prefix->{str}\n" if ($first & 0xff) == 0xff;
-    die "source prefix must not be link-local: $prefix->{str}\n"
-        if $first == 0xfe && (ord(substr($prefix->{packed}, 1, 1)) & 0xc0) == 0x80;
     return $prefix;
 }
 

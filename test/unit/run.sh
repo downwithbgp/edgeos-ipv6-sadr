@@ -43,3 +43,7 @@ if perl "$CHECK" "$TMP/bad6b.md" >/dev/null 2>&1; then
 fi
 
 echo "ALL UNIT TESTS PASSED"
+
+echo "== Perl unit, property and failure-injection tests =="
+cd "$ROOT"
+prove -I "$ROOT/src/lib" -I "$ROOT/test/unit/lib" -r "$ROOT/test/unit/t"
