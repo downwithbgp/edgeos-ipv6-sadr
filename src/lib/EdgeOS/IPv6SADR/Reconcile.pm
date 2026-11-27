@@ -499,6 +499,9 @@ sub _prune_boot_intent {
 
 sub _health_after_apply {
     my ($self, $desired) = @_;
+    # Health is a collaborator of reconcile but not of the low-level planners;
+    # load it lazily so bare `perl -c` and planner-only users do not need it.
+    require EdgeOS::IPv6SADR::Health;
     my $owned = $self->owned_state();
     my $obs = $self->observe($desired, $owned);
     my $exp = $self->build_expected($desired, $obs);
@@ -557,7 +560,12 @@ sub reconcile {
             unlink "$self->{state_dir}/journal.json";
             $self->_prune_boot_intent($desired);
             my $health = eval { $self->_health_after_apply($desired) };
-            $health //= { state => 'failed', error => 'post-apply health observation failed' };
+            unless ($health) {
+                my $health_err = $@;
+                $health_err =~ s/\s+$//;
+                $health = { state => 'failed',
+                            error => "post-apply health observation failed: $health_err" };
+            }
             $self->write_status({
                 state => $health->{state} // 'failed',
                 generation => $desired->{generation},

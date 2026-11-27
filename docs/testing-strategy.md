@@ -11,7 +11,7 @@ recorded in [`v0.1.0-evidence.md`](v0.1.0-evidence.md). The production lab is
 
 | Layer | Result |
 |---|---|
-| L0 — unit/property/failure | 9 files, **599 assertions, 0 failures**; includes failure injection at every mutation boundary and 40 generated property iterations |
+| L0 — unit/property/failure | 9 files, **614 assertions, 0 failures**; includes failure injection at every mutation boundary and 40 generated property iterations |
 | L1 — Linux netns | **145 pass / 0 fail**, 75 packet-path probes, established TCP/UDP flows, transitions and monitor restart; generic Linux only |
 | Packaging | lifecycle **13/13**, artifact **20/20**, two-build hash `9e45b9c18b38c8c3cf485b61f3926a366d7ac876e37b1acf2b1f963d4e546f5c` |
 | L2 — emulated EdgeOS | not executed; MIPS PIE/`mmap_min_addr` limitation unresolved |
