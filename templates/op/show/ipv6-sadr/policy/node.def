@@ -1,0 +1,2 @@
+help: List SADR policies and their health
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr policy

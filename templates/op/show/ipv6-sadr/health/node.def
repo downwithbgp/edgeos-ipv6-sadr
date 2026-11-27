@@ -1,0 +1,2 @@
+help: Show SADR health, separating intent, realization, effectiveness and reachability
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr health

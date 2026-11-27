@@ -1,0 +1,2 @@
+help: Show SADR reconciliation status and per-policy health
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr status

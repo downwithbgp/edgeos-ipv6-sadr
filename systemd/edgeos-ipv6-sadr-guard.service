@@ -1,0 +1,15 @@
+[Unit]
+Description=EdgeOS IPv6 SADR early boot guard
+Documentation=https://github.com/downwithbgp/edgeos-ipv6-sadr
+DefaultDependencies=no
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=vyatta-router.service
+ConditionPathExists=/config/config.boot
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vyatta/sbin/vyatta-ipv6-sadr boot-guard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

@@ -93,7 +93,7 @@ sub print_health {
 
 my %opt;
 GetOptions(\%opt,
-    'json', 'dry-run', 'source=s', 'destination=s',
+    'json', 'dry-run', 'source=s', 'destination=s', 'name=s',
     'mode=s', 'config=s', 'resync=i', 'debounce=f',
 ) or usage(2);
 
@@ -172,16 +172,24 @@ if ($command eq 'status' || $command eq 'health') {
 
 if ($command eq 'policy') {
     my $health = $sadr->current_health(mode => $mode);
+    my @policies = @{ $health->{policies} // [] };
+    if (defined $opt{name} && length $opt{name}) {
+        @policies = grep { $_->{name} eq $opt{name} } @policies;
+        if (!@policies) {
+            print STDERR "policy not found: $opt{name}\n";
+            exit 3;
+        }
+    }
     if ($opt{json}) {
         json_out({
             state    => $health->{state},
-            policies => $health->{policies} // [],
+            policies => \@policies,
             checks   => $health->{checks} // {},
         });
-    } elsif (!@{ $health->{policies} // [] }) {
+    } elsif (!@policies) {
         print "no policies configured\n";
     } else {
-        for my $p (@{ $health->{policies} }) {
+        for my $p (@policies) {
             my $src = join(',', @{ $p->{source_prefixes} // [] });
             print "$p->{name}\ttable=$p->{table}\tstate=$p->{state}\tsources=$src\n";
         }

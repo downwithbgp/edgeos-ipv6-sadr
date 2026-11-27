@@ -1,0 +1,2 @@
+help: Show SADR health as machine-readable JSON
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr health --json

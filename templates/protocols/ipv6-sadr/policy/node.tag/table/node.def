@@ -1,0 +1,4 @@
+type: u32
+help: Explicit provider routing table
+val_help: <table>; Table number 10001-19999
+syntax:expression: $VAR(@) >= 10001 && $VAR(@) <= 19999 ; "table must be in 10001-19999"

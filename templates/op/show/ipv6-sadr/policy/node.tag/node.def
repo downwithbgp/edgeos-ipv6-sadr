@@ -1,0 +1,2 @@
+help: Show one SADR policy
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr policy --name "$4"

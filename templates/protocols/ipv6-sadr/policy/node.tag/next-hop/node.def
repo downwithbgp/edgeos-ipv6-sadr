@@ -1,0 +1,3 @@
+type: ipv6addr
+help: Provider next hop; link-local next hops require the policy interface
+val_help: <address>; IPv6 next-hop address

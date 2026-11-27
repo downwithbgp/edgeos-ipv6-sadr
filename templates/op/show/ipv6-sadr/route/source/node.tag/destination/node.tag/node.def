@@ -1,0 +1,2 @@
+help: Destination IPv6 address
+run: /opt/vyatta/sbin/vyatta-ipv6-sadr route --source "$6" --destination "$7"

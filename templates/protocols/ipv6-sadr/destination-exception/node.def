@@ -1,0 +1,4 @@
+multi:
+type: ipv6net
+help: Exact internal destination prefix whose main-table route is mirrored
+val_help: <prefix>; Internal IPv6 destination prefix
