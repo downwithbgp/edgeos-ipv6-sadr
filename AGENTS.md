@@ -5,10 +5,19 @@
 `edgeos-ipv6-sadr` provides native, persistent IPv6 source-address-dependent routing (SADR) on
 Ubiquiti EdgeOS without NAT66, NPTv6 or address translation.
 
-**Current phase: architecture.** The deliverable is an evidence-backed architecture proposal plus an
-executable, isolated proof of concept. Do **not** produce a production Debian package, modify the
-maintainer's live router configuration, install packages on it, tag a release or publish artifacts
-until the architecture review gate is passed.
+**Current phase: architecture review.** The architecture proposal, target investigation, experiment
+record and executable Linux proof of concept are complete. **Do not** produce a production Debian
+package, modify the maintainer's live router configuration, install packages on it, tag a release or
+publish artifacts until the architecture review gate is passed.
+
+Current artifacts:
+
+* `docs/architecture/ADR-0001-routing-model.md` — proposed internal-whitelist + provider-table model.
+* `docs/requirements.md` — normative routing contract and non-guarantees.
+* `docs/investigation/2026-11-27-platform-investigation.md` — read-only target evidence.
+* `docs/investigation/2026-11-27-experiments.md` — generic-Linux experiment record.
+* `test/integration/netns-sadr.sh` — 65-assertion proof of concept, including 42 packet-path probes
+  (generic Linux only).
 
 ## Hard constraints
 
@@ -60,7 +69,6 @@ spec/architecture-phase/   planning artifacts for the current phase
 docs/                      durable requirements, investigation, architecture, testing strategy
 test/integration/          privileged network-namespace proof of concept
 test/unit/                 fast, unprivileged checks
-prototype/                 disposable prototype used to validate the routing model
 .github/workflows/         CI
 ```
 

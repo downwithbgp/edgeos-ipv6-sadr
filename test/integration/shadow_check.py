@@ -29,7 +29,7 @@ for line in sys.stdin:
     # managed-range conflict handled separately, not a pre-range shadow.
     if pri in (0, 32766, 32767):
         continue
-    if 20000 <= pri <= 21037:
+    if 20000 <= pri <= 21031:
         continue
     if "from all" in rest:
         found = True
