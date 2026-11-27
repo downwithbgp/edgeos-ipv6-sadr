@@ -30,6 +30,7 @@ explicit authorization; the plan itself does not authorize router mutation.
 - Maintenance window and an explicit abort/rollback owner.
 - Capture points on the provider-facing links and a packet generator/validator independent of the
   router.
+- Target userspace/iproute2 operation parity; see `docs/target-emulation-investigation.md`.
 - The existing manual table `41913` and rules `10410–10414` are treated as production state. They
   are not modified during qualification unless a separately authorized migration step says so.
 

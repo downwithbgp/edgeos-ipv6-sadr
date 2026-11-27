@@ -6,7 +6,7 @@ SHELL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -ty
 PERL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.pl' -o -name '*.pm' \) -print | sort)
 PYTHON_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f -name '*.py' -print | sort)
 
-.PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns test-package clean
+.PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns test-package test-target-parity clean
 
 test: lint test-unit
 
@@ -40,6 +40,9 @@ test-unit:
 
 test-package:
 	bash test/package/lifecycle.sh
+
+test-target-parity:
+	bash test/target/run-in-docker.sh
 
 # Privileged container; generic Linux evidence only, not EdgeOS evidence.
 test-netns:
