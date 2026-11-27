@@ -4,14 +4,15 @@ SHELL := /bin/bash
 # Files that are part of the repository, excluding generated/build state.
 SHELL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.sh' -o -name '*.bash' \) -print | sort)
 PERL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.pl' -o -name '*.pm' \) -print | sort)
+PYTHON_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f -name '*.py' -print | sort)
 
-.PHONY: test test-all lint lint-shell lint-perl shellcheck test-unit test-netns clean
+.PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns clean
 
 test: lint test-unit
 
 test-all: test test-netns
 
-lint: lint-shell lint-perl shellcheck
+lint: lint-shell lint-perl lint-python shellcheck
 
 lint-shell:
 	@set -e; \
@@ -22,6 +23,11 @@ lint-perl:
 	@set -e; \
 	if [ -z "$(PERL_FILES)" ]; then echo "lint-perl: no Perl files"; exit 0; fi; \
 	for f in $(PERL_FILES); do echo "perl -c $$f"; perl -c "$$f" >/dev/null; done
+
+lint-python:
+	@set -e; \
+	if [ -z "$(PYTHON_FILES)" ]; then echo "lint-python: no Python files"; exit 0; fi; \
+	for f in $(PYTHON_FILES); do echo "py_compile $$f"; python3 -m py_compile "$$f"; done
 
 shellcheck:
 	@set -e; \

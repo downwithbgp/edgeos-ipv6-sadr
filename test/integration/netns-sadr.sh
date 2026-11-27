@@ -58,6 +58,9 @@ INT_CFG_HOST=2001:db8:200:2::80
 INT_LEAK=2001:db8:200:2::/64
 LAN=2001:db8:1::/64
 
+# Provider transfer prefixes are deliberately NOT in the internal whitelist.
+# A connected route on a policy egress/next-hop interface is not internal: a
+# constrained source must not cross to the other provider's on-link subnet.
 INTERNAL_PREFIXES=(
     "$LAN dev er_cl"
     "$INT_CONNECTED dev er_ir"
@@ -244,6 +247,30 @@ probe() {
     fi
 }
 
+record_probe() { # record_probe <desc> <ns> <src> <dst> <cmd...>
+    local desc=$1 ns=$2 src=$3 dst=$4
+    shift 4
+    PROBE_N=$((PROBE_N + 1))
+    local pa="$CAP/pa-$PROBE_N.pcap" pb="$CAP/pb-$PROBE_N.pcap"
+    local pa_pid pb_pid rc=0
+    rm -f "$pa" "$pb"
+    cap_start pa pa_er "$pa" || return 0
+    pa_pid=$CAP_PID
+    cap_start pb pb_er "$pb" || { cap_stop "$pa_pid"; return 0; }
+    pb_pid=$CAP_PID
+    sleep "$CAP_SETTLE"
+    "$@" || rc=$?
+    sleep "$CAP_DRAIN"
+    cap_stop "$pa_pid"
+    cap_stop "$pb_pid"
+    local pa_n pb_n rg
+    pa_n=$(cap_count "$pa" "$src" "$dst")
+    pb_n=$(cap_count "$pb" "$src" "$dst")
+    rg=$(run er ip -6 route get "$dst" from "$src" 2>&1 || true)
+    say "RECORD probe $PROBE_N: $desc (rc=$rc pa=$pa_n pb=$pb_n)"
+    say "RECORD route get: $rg"
+}
+
 # ---------------------------------------------------------------- health
 table_owned() { # table_owned <table> <allowed-substring>...
     local table=$1
@@ -294,20 +321,35 @@ table_has() { # table_has <table> <substring>
     run er ip -6 route show table "$1" | grep -F -- "$2" >/dev/null 2>&1
 }
 
+table_has_real() { # table_has_real <table> <prefix>
+    run er ip -6 route show table "$1" | grep -F -- "$2" | grep -qv '^unreachable '
+}
+
+rule_present() { # rule_present <src> <table>
+    run er ip -6 rule show | grep -E "from ${1} lookup ${2}([[:space:]]|$)" >/dev/null 2>&1
+}
+
+internal_table_ok() {
+    local spec prefix
+    for spec in "${INTERNAL_PREFIXES[@]}"; do
+        prefix=${spec%% *}
+        table_has_real 10000 "$prefix" || return 1
+        table_has 10000 "unreachable $prefix" || return 1
+    done
+    return 0
+}
+
 shadowed() { # shadowed <src> <first_priority>
-    run er ip -6 rule show | awk -v src="$1" -v fp="$2" '
-        /^[0-9]+:/ {
-            p=$1; sub(":", "", p)
-            if ((p + 0) < (fp + 0) && index($0, "from " src " ") > 0) found=1
-        }
-        END { exit(found ? 0 : 1) }
-    '
+    run er ip -6 rule show | python3 "$ROOT/test/integration/shadow_check.py" "$1" "$2"
 }
 
 health_policy() { # health_policy <src> <table> <first_priority> <interface> <disabled 0|1>
     local src=$1 table=$2 first=$3 iface=$4 disabled=$5
     if shadowed "$src" "$first"; then echo shadowed; return; fi
     if ! table_owned_for "$table"; then echo conflict; return; fi
+    if ! internal_table_ok; then echo incomplete; return; fi
+    if ! rule_present "$src" 10000; then echo incomplete; return; fi
+    if ! rule_present "$src" "$table"; then echo incomplete; return; fi
     if ! table_has "$table" "unreachable default"; then echo incomplete; return; fi
     if ! table_has "$table" "default via"; then
         if [ "$disabled" = "1" ]; then echo disabled; else echo protected; fi
@@ -541,42 +583,42 @@ strict_tables() {
 }
 
 strict_rules() {
-    ensure_rule "$PA_PFX" lookup 10000 20000
-    ensure_rule "$PA_PFX" lookup 10001 20001
-    ensure_rule "$PB_PFX" lookup 10000 20010
-    ensure_rule "$PB_PFX" lookup 10002 20011
-    ensure_rule "$PA64_PFX" lookup 10000 19992
-    ensure_rule "$PA64_PFX" lookup 10003 19993
+    ensure_rule "$PA_PFX" lookup 10000 20510
+    ensure_rule "$PA_PFX" lookup 10001 20511
+    ensure_rule "$PB_PFX" lookup 10000 20520
+    ensure_rule "$PB_PFX" lookup 10002 20521
+    ensure_rule "$PA64_PFX" lookup 10000 20500
+    ensure_rule "$PA64_PFX" lookup 10003 20501
 }
 
 strict_apply() {
     # First-application blocking guard: a previously unconstrained source is
     # blocked while its policy is installed.
-    ensure_rule "$PA_PFX" unreachable "" 20007
-    ensure_rule "$PB_PFX" unreachable "" 20017
+    ensure_rule "$PA_PFX" unreachable "" 20507
+    ensure_rule "$PB_PFX" unreachable "" 20517
     strict_tables
     strict_rules
-    del_rule "$PA_PFX" unreachable "" 20007
-    del_rule "$PB_PFX" unreachable "" 20017
+    del_rule "$PA_PFX" unreachable "" 20507
+    del_rule "$PB_PFX" unreachable "" 20517
 }
 
 strict_reset() {
-    del_rule "$PA_PFX" lookup 10000 20000
-    del_rule "$PA_PFX" lookup 10001 20001
-    del_rule "$PB_PFX" lookup 10000 20010
-    del_rule "$PB_PFX" lookup 10002 20011
-    del_rule "$PA64_PFX" lookup 10000 19992
-    del_rule "$PA64_PFX" lookup 10003 19993
-    del_rule "$PA_PFX" unreachable "" 20007
-    del_rule "$PB_PFX" unreachable "" 20017
+    del_rule "$PA_PFX" lookup 10000 20510
+    del_rule "$PA_PFX" lookup 10001 20511
+    del_rule "$PB_PFX" lookup 10000 20520
+    del_rule "$PB_PFX" lookup 10002 20521
+    del_rule "$PA64_PFX" lookup 10000 20500
+    del_rule "$PA64_PFX" lookup 10003 20501
+    del_rule "$PA_PFX" unreachable "" 20507
+    del_rule "$PB_PFX" unreachable "" 20517
 }
 
 say "=== internal-whitelist model ==="
 # Demonstrate the first-application guard before the permanent rules exist.
-ensure_rule "$PA_PFX" unreachable "" 20007
+ensure_rule "$PA_PFX" unreachable "" 20507
 probe "create: PA source is blocked by the first-action guard" cl "$PA56_SRC" "$EXT_A_HOST" 0 0 0 0 0 \
     ping6 cl "$PA56_SRC" "$EXT_A_HOST"
-del_rule "$PA_PFX" unreachable "" 20007
+del_rule "$PA_PFX" unreachable "" 20507
 
 strict_apply
 probe "strict: PA source reaches Internet A" cl "$PA56_SRC" "$EXT_A_HOST" 1 1 999 0 0 \
@@ -595,6 +637,12 @@ probe "strict: nested /64 source is blocked for external (precedence)" cl "$PA64
     ping6 cl "$PA64_SRC" "$EXT_A_HOST"
 probe "strict: nested /64 source still reaches internal" cl "$PA64_SRC" "$INT_CONNECTED_HOST" 1 0 0 0 0 \
     ping6 cl "$PA64_SRC" "$INT_CONNECTED_HOST"
+# Provider-facing connected routes are not internal. A PB source must not
+# reach PA's on-link transfer address through PA.
+probe "strict: PB source to PA transfer address does not use PA" cl "$PB_SRC" 2001:db8:aa00::1 0 0 0 0 999 \
+    ping6 cl "$PB_SRC" 2001:db8:aa00::1
+probe "strict: PA source to PB transfer address does not use PB" cl "$PA56_SRC" 2001:db8:bb00::1 0 0 999 0 0 \
+    ping6 cl "$PA56_SRC" 2001:db8:bb00::1
 
 # UDP and TCP through the source policies.
 probe "strict: PA source UDP to Internet A" cl "$PA56_SRC" "$EXT_A_HOST" 1 1 999 0 0 \
@@ -639,15 +687,15 @@ fi
 
 # Health states.
 say "=== health states ==="
-expect_health "health: PA policy effective" effective "$(health_policy "$PA_PFX" 10001 20000 er_pa 0)"
-expect_health "health: PB policy effective" effective "$(health_policy "$PB_PFX" 10002 20010 er_pb 0)"
-expect_health "health: nested /64 guard-only policy protected" protected "$(health_policy "$PA64_PFX" 10003 19992 er_pa 0)"
+expect_health "health: PA policy effective" effective "$(health_policy "$PA_PFX" 10001 20510 er_pa 0)"
+expect_health "health: PB policy effective" effective "$(health_policy "$PB_PFX" 10002 20520 er_pb 0)"
+expect_health "health: nested /64 guard-only policy protected" protected "$(health_policy "$PA64_PFX" 10003 20500 er_pa 0)"
 
 # Provider route loss is fail-closed, not a fallback.
 del_table_route 10001 default via "$PA_NH" dev er_pa
 probe "loss: PA provider route removed, source is fail-closed" cl "$PA56_SRC" "$EXT_A_HOST" 0 0 0 0 0 \
     ping6 cl "$PA56_SRC" "$EXT_A_HOST"
-expect_health "health: PA policy protected after route loss" protected "$(health_policy "$PA_PFX" 10001 20000 er_pa 0)"
+expect_health "health: PA policy protected after route loss" protected "$(health_policy "$PA_PFX" 10001 20510 er_pa 0)"
 ensure_table_route 10001 default via "$PA_NH" dev er_pa
 probe "restore: PA source reaches Internet A again" cl "$PA56_SRC" "$EXT_A_HOST" 1 1 999 0 0 \
     ping6 cl "$PA56_SRC" "$EXT_A_HOST"
@@ -656,9 +704,11 @@ probe "restore: PA source reaches Internet A again" cl "$PA56_SRC" "$EXT_A_HOST"
 del_table_route 10000 "$INT_CFG" via "$INT_CONNECTED_HOST" dev er_ir
 probe "loss: internal route removed, source is fail-closed for that prefix" cl "$PA56_SRC" "$INT_CFG_HOST" 0 0 0 0 0 \
     ping6 cl "$PA56_SRC" "$INT_CFG_HOST"
+expect_health "health: internal route loss reports incomplete" incomplete "$(health_policy "$PA_PFX" 10001 20510 er_pa 0)"
 ensure_table_route 10000 "$INT_CFG" via "$INT_CONNECTED_HOST" dev er_ir
 probe "restore: internal route restored" cl "$PA56_SRC" "$INT_CFG_HOST" 1 0 0 0 0 \
     ping6 cl "$PA56_SRC" "$INT_CFG_HOST"
+expect_health "health: internal route restored reports effective" effective "$(health_policy "$PA_PFX" 10001 20510 er_pa 0)"
 
 # Ownership conflicts are refused, not deleted.
 say "=== ownership and shadowing ==="
@@ -683,19 +733,35 @@ fi
 run er ip -6 route del 2001:db8:dead::/64 dev er_pa table 10001 2>/dev/null || true
 
 run er ip -6 rule add from "$PB_PFX" lookup main pref 15000
-if shadowed "$PB_PFX" 20010; then
+if shadowed "$PB_PFX" 20520; then
     ok "shadow: preceding foreign rule is detected"
 else
     bad "shadow: preceding foreign rule was not detected"
 fi
-expect_health "health: shadowed policy is not reported effective" shadowed "$(health_policy "$PB_PFX" 10002 20010 er_pb 0)"
+expect_health "health: shadowed policy is not reported effective" shadowed "$(health_policy "$PB_PFX" 10002 20520 er_pb 0)"
 run er ip -6 rule del from "$PB_PFX" lookup main pref 15000 2>/dev/null || true
+
+run er ip -6 rule add from "$PA64_PFX" lookup main pref 15000
+if shadowed "$PA_PFX" 20510; then
+    ok "shadow: more-specific foreign rule is detected for the broader policy"
+else
+    bad "shadow: more-specific foreign rule was not detected"
+fi
+run er ip -6 rule del from "$PA64_PFX" lookup main pref 15000 2>/dev/null || true
+
+run er ip -6 rule add from all unreachable pref 15000
+if shadowed "$PA_PFX" 20510; then
+    ok "shadow: catch-all foreign rule is detected"
+else
+    bad "shadow: catch-all foreign rule was not detected"
+fi
+run er ip -6 rule del from all unreachable pref 15000 2>/dev/null || true
 
 # Idempotent re-application must not duplicate rules/routes.
 say "=== idempotency ==="
-before_rules=$(run er ip -6 rule show | grep -cE '^(19992|19993|20000|20001|20010|20011):' || true)
+before_rules=$(run er ip -6 rule show | grep -cE '^(20500|20501|20510|20511|20520|20521):' || true)
 strict_apply
-after_rules=$(run er ip -6 rule show | grep -cE '^(19992|19993|20000|20001|20010|20011):' || true)
+after_rules=$(run er ip -6 rule show | grep -cE '^(20500|20501|20510|20511|20520|20521):' || true)
 if [ "$before_rules" = "$after_rules" ]; then
     ok "idempotency: rule count unchanged ($after_rules)"
 else
@@ -709,7 +775,7 @@ probe "disable: PB external is blocked" cl "$PB_SRC" "$EXT_B_HOST" 0 0 0 0 0 \
     ping6 cl "$PB_SRC" "$EXT_B_HOST"
 probe "disable: PB internal remains reachable" cl "$PB_SRC" "$INT_CONNECTED_HOST" 1 0 0 0 0 \
     ping6 cl "$PB_SRC" "$INT_CONNECTED_HOST"
-expect_health "health: PB policy disabled" disabled "$(health_policy "$PB_PFX" 10002 20010 er_pb 1)"
+expect_health "health: PB policy disabled" disabled "$(health_policy "$PB_PFX" 10002 20520 er_pb 1)"
 ensure_table_route 10002 default via "$PB_NH" dev er_pb
 probe "restore: PB external reachable again" cl "$PB_SRC" "$EXT_B_HOST" 1 0 0 1 999 \
     ping6 cl "$PB_SRC" "$EXT_B_HOST"
@@ -774,7 +840,7 @@ strict_reset
 # Source-specific IPv6 FIB routes in main. This is a generic-Linux experiment;
 # whether the target iproute2 accepts the add syntax is a separate target probe.
 say "=== source-specific FIB candidate (generic Linux) ==="
-if run er ip -6 rule show | grep -qE '^(19992|19993|20000|20001|20010|20011):'; then
+if run er ip -6 rule show | grep -qE '^(20500|20501|20510|20511|20520|20521):'; then
     bad "candidate B precheck: strict rules still present"
 else
     ok "candidate B precheck: strict rules removed"
@@ -795,15 +861,20 @@ probe "source-FIB LEAK: PA source to configured internal uses the more-specific 
     ping6 cl "$PA56_SRC" "$INT_CFG_HOST"
 probe "source-FIB: PA source reaches connected internal" cl "$PA56_SRC" "$INT_CONNECTED_HOST" 1 0 0 0 0 \
     ping6 cl "$PA56_SRC" "$INT_CONNECTED_HOST"
+record_probe "source-FIB control: PA source to a destination with no specific route uses the source default" cl "$PA56_SRC" 2001:db8:cccc::2 \
+    ping6 cl "$PA56_SRC" 2001:db8:cccc::2
 run er ip -6 route del default from "$PA_PFX" via "$PA_NH" dev er_pa metric 1024 proto 194
 say "--- candidate B routes after PA default removal ---"
 run er ip -6 route show | grep -E 'from |default' || true
-# Falsification: the source-specific unreachable default is visible in the
-# control-plane lookup, but forwarded traffic still falls back to the normal
-# main default. Record the observed fallback; it rejects candidate B for R-5.
-probe "source-FIB FALSIFICATION: forwarded PA source falls back to PA after provider route removal" cl "$PA56_SRC" "$EXT_A_HOST" 1 1 999 0 0 \
+# A more-specific route still captures the source. That is already a
+# falsification of candidate B. Separately record whether the source-specific
+# unreachable default stops forwarded fallback for a destination that has no
+# more-specific route.
+probe "source-FIB: more-specific route still captures PA source after provider default removal" cl "$PA56_SRC" "$EXT_A_HOST" 1 1 999 0 0 \
     ping6 cl "$PA56_SRC" "$EXT_A_HOST"
-say "FALSIFIED: source-specific unreachable default did not stop forwarded fallback; candidate B rejected for strict fail-closed"
+record_probe "source-FIB guard: PA source to a destination with no specific route after provider default removal" cl "$PA56_SRC" 2001:db8:cccc::2 \
+    ping6 cl "$PA56_SRC" 2001:db8:cccc::2
+say "See RECORD lines for the candidate B guard result; candidate B is rejected on the more-specific-route capture regardless."
 run er ip -6 route del unreachable default from "$PA_PFX" metric 4096 proto 194 2>/dev/null || true
 run er ip -6 route del default from "$PB_PFX" via "$PB_NH" dev er_pb metric 1024 proto 194 2>/dev/null || true
 run er ip -6 route del unreachable default from "$PB_PFX" metric 4096 proto 194 2>/dev/null || true
