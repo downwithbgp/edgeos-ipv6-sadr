@@ -103,3 +103,25 @@ Package size is 26,982 bytes (`Installed-Size` 157 KiB).
 The earlier `160b493` runs above remain historical. The final code commit for the v0.1.0 candidate is
 `db7b64b`; the Phase IV commits after it add qualification tooling and documentation only and do not
 change the product package. The PR remains draft and unmerged; no release was published.
+
+## 9. Phase IV runs on the production-aware head
+
+Phase IV adds the qualification profile layer and planning/evidence docs. The workflow was repinned
+to `actions/checkout` `v7.0.1` (Node 24) in the same phase. GitHub Actions on the Phase IV head
+(`5da9759`) both succeeded, with all three jobs green:
+
+| Trigger | Run | Result |
+|---|---|---|
+| push `feat/v0.1.0` (`5da9759`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46020441263> | success: `lint-and-unit`, `netns`, `package` |
+| pull request #1 (`5da9759`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46020448297> | success: `lint-and-unit`, `netns`, `package` |
+
+The same tree was verified locally before the push: `make lint`, `make test` (619 unit/property/
+failure assertions plus the qualification plan/profile gates), package lifecycle **13/13**, netns
+**145/0**, iproute2 parity **9/0**, and `make test-perf`. Job log text is not reproduced here
+(the logs API requires authentication); the recorded evidence is the job conclusion plus the local
+run of the same commands.
+
+Phase IV changes no product source or package content. The package hash for the v0.1.0 candidate
+remains `f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`; later commits after the
+code head `db7b64b` are qualification tooling and documentation. PR #1 remains draft and unmerged;
+no release was published.

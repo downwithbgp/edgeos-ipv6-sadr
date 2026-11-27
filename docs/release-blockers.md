@@ -19,7 +19,7 @@ hardware-qualified product.
 | iproute2 parity | PASS | 9/0; generic Linux only |
 | Package build/lifecycle/artifact | PASS | artifact 20/20; lifecycle 13/13; reproducible hash |
 | Actual CI push/PR (pre-Phase IV) | PASS | final code `db7b64b`; docs head `4acff35` |
-| CI on the Phase IV head | NOT RUN | checkout repinned to `v7.0.1`; requires a green push/PR run before this phase reports complete |
+| CI on the Phase IV head | PASS | `5da9759`: push run 46020441263 and PR run 46020448297, all jobs success on `checkout@v7.0.1` |
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
 | Production canary R1 | BLOCKED | requires unique test topology, independent management, scoped authorization |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
