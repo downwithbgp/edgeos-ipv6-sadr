@@ -20,6 +20,11 @@ vyatta-ipv6-sadr policy [--name NAME] [--json]
 vyatta-ipv6-sadr route --source SOURCE --destination DESTINATION [--json]
 ```
 
+Boot ordering and failure propagation are reviewed in `docs/boot-safety-review.md`. Ordering is
+not a success dependency: a failed guard is reported, but the vendor router is not hard-blocked in
+order to preserve management connectivity. The boot window remains a named non-guarantee until
+target verification.
+
 Runtime state is `/run/edgeos-ipv6-sadr/{manifest,journal,status,boot-guards,lock}`; it is
 recreated by the monitor's systemd `RuntimeDirectory` and cleared at reboot. There is no persistent
 snapshot. `boot-guard` parses `/config/config.boot` before `vyatta-router.service` and writes exact

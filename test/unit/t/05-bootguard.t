@@ -117,6 +117,9 @@ write_text("$f->{dir}/unbalanced.boot", "protocols {\n  ipv6-sadr {\n    policy 
 my $ok = eval { $s->parse_config_boot_sources("$f->{dir}/unbalanced.boot"); 1 };
 ok(!$ok && $@ =~ /unbalanced/, 'unbalanced configuration rejected');
 
+$ok = eval { $s->parse_config_boot_sources("$f->{dir}/missing.boot"); 1 };
+ok(!$ok && $@ =~ /cannot read/, 'missing configuration is a failure, not a skip');
+
 write_text("$f->{dir}/badprefix.boot",
     "protocols {\n  ipv6-sadr {\n    policy p {\n      source-prefix 2001:db8::1/64\n    }\n  }\n}\n");
 $ok = eval { $s->parse_config_boot_sources("$f->{dir}/badprefix.boot"); 1 };

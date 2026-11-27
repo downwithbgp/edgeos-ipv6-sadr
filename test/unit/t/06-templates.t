@@ -84,8 +84,12 @@ like($monitor, qr/^ExecStart=\/opt\/vyatta\/sbin\/vyatta-ipv6-sadr monitor$/m,
 
 my $guard = read_text("$ROOT/systemd/edgeos-ipv6-sadr-guard.service");
 like($guard, qr/^DefaultDependencies=no$/m, 'guard has minimal boot dependencies');
-like($guard, qr/^Before=vyatta-router\.service$/m, 'guard starts before the router');
+like($guard, qr/^Before=.*vyatta-router\.service/m, 'guard starts before the router');
+like($guard, qr/^Before=.*systemd-sysctl\.service/m, 'guard starts before forwarding sysctls');
+like($guard, qr/^Before=.*network-pre\.target/m, 'guard starts before network pre-configuration');
 like($guard, qr/^After=local-fs\.target/m, 'guard starts after local filesystems');
+unlike($guard, qr/^ConditionPathExists=/m, 'guard does not silently skip a missing config');
+like($guard, qr/^WantedBy=sysinit\.target multi-user\.target$/m, 'guard is activated in both boot targets');
 like($guard, qr/^ExecStart=\/opt\/vyatta\/sbin\/vyatta-ipv6-sadr boot-guard$/m,
     'guard executes boot-guard');
 like($guard, qr/^RemainAfterExit=yes$/m, 'guard remains after exit');
