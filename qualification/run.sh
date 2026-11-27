@@ -32,8 +32,9 @@ usage: qualification/run.sh [--plan|--execute] --out DIR [options]
   --config PATH          configuration-mode command file for the SADR policy
   --out DIR              results directory
 
-Execute also requires SADR_QUAL_ISOLATED=1 and the relevant adapter variables.
-See qualification/README.md.
+Execute also requires SADR_QUAL_ISOLATED=1 and SADR_QUAL_ARTIFACT_SHA256 set to
+the approved artifact hash (the run refuses an unbound artifact), plus the
+relevant adapter variables. See qualification/README.md.
 EOF
     exit 2
 }
@@ -145,7 +146,7 @@ plan_step resources "CPU, memory, throughput, recovery latency and boot time" "r
 plan_step cleanup "Restore configuration/package state and verify no managed residue" "run SADR_QUAL_CLEANUP_CMD"
 
 report_and_exit() {
-    python3 "$ROOT/qualification/report.py" --mode execute --tsv "$TSV" --out "$OUT" \
+    python3 "$ROOT/qualification/report.py" --mode execute --profile "${SADR_QUAL_PROFILE:-isolated}" --tsv "$TSV" --out "$OUT" \
         --router "$ROUTER" --artifact "$ARTIFACT" --firmware "$FIRMWARE" || true
     echo "qualification stopped before/at a required precondition; see $OUT/results.md" >&2
     exit 1
@@ -155,7 +156,7 @@ report_and_exit() {
 REQUIRED="preflight independent-management backup artifact install configure structural packets flows transitions monitor rollback cold-boot upgrade remove-refusal offload-on offload-off source-selection bgp-internal coexistence resources cleanup"
 
 if [ "$MODE" = "plan" ]; then
-    python3 "$ROOT/qualification/report.py" --mode plan --tsv "$TSV" --out "$OUT" \
+    python3 "$ROOT/qualification/report.py" --mode plan --profile "${SADR_QUAL_PROFILE:-plan}" --tsv "$TSV" --out "$OUT" \
         --router "$ROUTER" --artifact "$ARTIFACT" --firmware "$FIRMWARE"
     echo "plan written to $OUT/results.json and $OUT/results.md"
     exit 0
@@ -169,6 +170,12 @@ if [ -z "$ROUTER" ] || [ -z "$ARTIFACT" ] || [ -z "$CONFIG" ]; then
     echo "FAIL: --execute requires --router, --artifact and --config" >&2
     exit 2
 fi
+case "$ROUTER" in
+    -*|*[[:space:]]*|*[!A-Za-z0-9._@:%-]*)
+        echo "FAIL: --router contains unsupported characters" >&2
+        exit 2
+        ;;
+esac
 [ -f "$ARTIFACT" ] || { echo "FAIL: artifact not found: $ARTIFACT" >&2; exit 2; }
 [ -f "$CONFIG" ] || { echo "FAIL: config command file not found: $CONFIG" >&2; exit 2; }
 command -v ssh >/dev/null 2>&1 || { echo "FAIL: ssh required" >&2; exit 2; }
@@ -217,7 +224,12 @@ else
 fi
 
 hash=$(sha256sum "$ARTIFACT" | awk '{print $1}')
-if [ "$hash" = "${SADR_QUAL_ARTIFACT_SHA256:-$hash}" ]; then
+if [ -z "${SADR_QUAL_ARTIFACT_SHA256:-}" ]; then
+    record artifact "Hash and inspect the .deb under test" fail \
+        "SADR_QUAL_ARTIFACT_SHA256 is not set; refusing an unbound artifact" "sha256sum"
+    report_and_exit
+fi
+if [ "$hash" = "$SADR_QUAL_ARTIFACT_SHA256" ]; then
     record artifact "Hash and inspect the .deb under test" pass "sha256=$hash" "sha256sum"
 else
     record artifact "Hash and inspect the .deb under test" fail \
@@ -256,7 +268,7 @@ adapter_var resources "CPU, memory, throughput, recovery latency and boot time" 
 # Cleanup is attempted even if earlier steps failed.
 adapter_var cleanup "Restore configuration/package state and verify no managed residue" SADR_QUAL_CLEANUP_CMD
 
-python3 "$ROOT/qualification/report.py" --mode execute --tsv "$TSV" --out "$OUT" \
+python3 "$ROOT/qualification/report.py" --mode execute --profile "${SADR_QUAL_PROFILE:-isolated}" --tsv "$TSV" --out "$OUT" \
     --router "$ROUTER" --artifact "$ARTIFACT" --firmware "$FIRMWARE"
 python3 - "$OUT/results.json" "$REQUIRED" <<'PY'
 import json, sys

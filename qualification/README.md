@@ -1,23 +1,69 @@
 # Hardware qualification harness
 
-This directory contains an **executable, plan-first** controller for an isolated EdgeRouter X
-running EdgeOS 3.0.1 build 5862409. It is not authorized to run against the production router and
-does not itself install anything in this repository's test phase.
+This directory contains an **executable, plan-first** controller. The production-aware entrypoint is
+`profile.sh`; `run.sh` remains the full-matrix controller for an isolated EdgeRouter X running EdgeOS
+3.0.1 build 5862409. Nothing here is authorized to mutate the production router without a scoped
+authorization file.
 
 ## Safety model
 
-- Default mode is `--plan`: no SSH contact, no package install, no configuration commit.
-- `--execute` requires **all** of:
-  - `--authorize` (explicit acknowledgement);
-  - `SADR_QUAL_ISOLATED=1` (operator attestation that the target is an isolated device);
-  - `--router`, `--artifact` and `--config`;
-  - a preflight match for the exact firmware family and `4.14.54-UBNT`.
+- Default profile is `plan`: no SSH contact, no package install, no configuration commit.
+- `--execute` always requires `--authorize`.
+- `observe` is read-only and needs no authorization file.
+- `canary` and `maintenance` require `--test-id` plus `--authorization` JSON whose `test_ids`
+  contains that id, with an unexpired `not_after` deadline; the validated duration, scope, recovery
+  and artifact hash are exported to the adapter rather than re-read from disk.
+- `isolated` additionally requires `target_class: isolated`, an `artifact_sha256`,
+  `SADR_QUAL_ISOLATED=1`, `--router`, `--artifact` and `--config`, and a preflight match for the
+  exact firmware family and `4.14.54-UBNT`.
+- `profile.sh` and `run.sh` validate the router value before use, so an option-injection value
+  cannot reach `ssh`.
 - The harness refuses missing prerequisites and marks missing test adapters `blocked`; it never
   treats a blocked step as a pass.
-- Packet/transition/boot adapters must return JSON with `ok: true`, and if present `probes >= 0`
-  and `wrong_provider == 0`. A finite probe set is evidence, not a mathematical proof of no leakage.
+- A run is complete only when every executed step passed; any `fail`, `blocked` or unexecuted
+  mutating step exits non-zero, for `observe` as well.
+- Canary/maintenance adapters must return JSON with `ok: true`, `probes` > 0 and
+  `wrong_provider == 0`. A finite probe set is evidence, not a mathematical proof of no leakage.
+- `canary` and `maintenance` install an `EXIT`/`INT`/`TERM` trap that runs the authorized cleanup
+  command once. Losing the orchestration session therefore does not silently leave the test objects
+  behind; the trap log records whether cleanup actually ran. The `isolated` profile execs `run.sh`,
+  which has no such trap: it needs an independent recovery path.
+- The approved mutation scope and recovery text are exported to the adapter as
+  `SADR_QUAL_APPROVED_SCOPE`/`SADR_QUAL_RECOVERY`; the adapter must confine itself to them. The
+  harness cannot verify an arbitrary adapter command stayed inside its scope.
+
+
+## Profiles
+
+| Profile | Purpose | Mutation |
+|---|---|---|
+| `plan` | Render the complete plan; **default** | none |
+| `observe` | Bounded read-only identity/RPDB/table/interface/systemd/resource baseline | none |
+| `canary` | One exact authorized synthetic experiment; no package install | requires an authorization file |
+| `maintenance` | Explicitly authorized disruptive test; no automatic reboot | requires an authorization file |
+| `isolated` | Original full 22-step dedicated-hardware qualification | full isolated matrix |
+
+Canary and maintenance require `--test-id` plus `--authorization` JSON with exact `device_id`,
+`profile`, `target_class: production`, `test_ids` (including the requested test id),
+`max_duration_seconds`, `approved_mutation_scope`, `recovery` and an unexpired `not_after`.
+Isolated requires `target_class: isolated`, an `artifact_sha256` and `SADR_QUAL_ISOLATED=1`. A
+missing/mismatched field aborts before any mutation. There is no generic production-safety bypass.
 
 ## Usage
+
+```bash
+# Production-aware plan; no router is contacted.
+qualification/profile.sh --profile canary --plan --out "$TMPDIR/profile-plan"
+
+# Read-only production baseline collection.
+qualification/profile.sh --profile observe --execute --authorize \
+  --router admin@router --out "$TMPDIR/observe"
+
+# One authorized synthetic canary (only after a scoped authorization exists).
+qualification/profile.sh --profile canary --execute --authorize \
+  --router admin@router --device-id ER-X-TEST --test-id R1-guard-only \
+  --authorization /secure/r1-authorization.json --out "$TMPDIR/canary"
+```
 
 ```bash
 # Plan only; no router is contacted.
@@ -25,12 +71,16 @@ qualification/run.sh --plan --out "$TMPDIR/qualification-plan" \
   --router admin@isolated-router --artifact /path/edgeos-ipv6-sadr_0.1.0_all.deb \
   --firmware 'EdgeRouter.ER-e50.v3.0.1.5862409.*'
 
-# Isolated hardware session, explicitly authorized.
-SADR_QUAL_ISOLATED=1 qualification/run.sh --execute --authorize \
+# Isolated hardware session, explicitly authorized. run.sh refuses an unbound
+# artifact, so the approved hash must be supplied.
+ARTIFACT=/path/edgeos-ipv6-sadr_0.1.0_all.deb
+SADR_QUAL_ARTIFACT_SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
+SADR_QUAL_ISOLATED=1 SADR_QUAL_ARTIFACT_SHA256="$SADR_QUAL_ARTIFACT_SHA256" \
+  qualification/run.sh --execute --authorize \
   --router admin@isolated-router \
   --device-id ER-X \
   --firmware 'EdgeRouter.ER-e50.v3.0.1.5862409.xxxxxxx' \
-  --artifact /path/edgeos-ipv6-sadr_0.1.0_all.deb \
+  --artifact "$ARTIFACT" \
   --config /path/sadr-config-commands.txt \
   --out /path/qualification-run
 ```
@@ -84,5 +134,8 @@ repeatable evidence collection.
 ## Validation
 
 `test/qualification/test-plan.sh` runs plan mode and asserts the complete step matrix is present,
-statuses are `planned`, and no router contact is attempted. It is part of the repository's
-qualification checks.
+statuses are `planned`, and no router contact is attempted. `test/qualification/test-profiles.sh`
+drives every profile plan, the authorization validator (deadline, device/profile/test-id/scope,
+duration bounds, artifact hash), the execution gates, cleanup on failure and interrupt, and the
+non-zero exit for a failed observe collection. Both are part of the repository's qualification
+checks.

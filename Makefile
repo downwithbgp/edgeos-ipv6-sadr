@@ -49,6 +49,7 @@ test-perf:
 
 test-qualification:
 	bash test/qualification/test-plan.sh
+	bash test/qualification/test-profiles.sh
 
 # Privileged container; generic Linux evidence only, not EdgeOS evidence.
 test-netns:

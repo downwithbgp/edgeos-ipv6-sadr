@@ -15,6 +15,8 @@ def main():
     ap.add_argument("--router", default="")
     ap.add_argument("--artifact", default="")
     ap.add_argument("--firmware", default="")
+    ap.add_argument("--profile", default="plan",
+                    choices=("plan", "observe", "canary", "maintenance", "isolated"))
     args = ap.parse_args()
 
     steps = []
@@ -34,6 +36,7 @@ def main():
     result = {
         "schema": 1,
         "mode": args.mode,
+        "profile": args.profile,
         "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "router": args.router,
         "artifact": args.artifact,
@@ -50,9 +53,10 @@ def main():
         fh.write("\n")
 
     lines = [
-        "# IPv6 SADR hardware qualification report",
+        f"# IPv6 SADR {args.profile} qualification report",
         "",
         f"- Mode: **{args.mode}**",
+        f"- Profile: **{args.profile}**",
         f"- Generated: `{result['generated']}`",
         f"- Router: `{args.router or 'not supplied'}`",
         f"- Artifact: `{args.artifact or 'not supplied'}`",

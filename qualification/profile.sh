@@ -1,0 +1,290 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Production-aware qualification profiles. Default is Plan; no router contact.
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+PROFILE=plan
+MODE=plan
+ROUTER=""
+DEVICE_ID=""
+FIRMWARE=""
+ARTIFACT=""
+CONFIG=""
+AUTH_FILE=""
+TEST_ID=""
+OUT=""
+AUTHORIZED=0
+MAXDUR=0
+CLEANUP_TIMEOUT=30
+MUTATION_STARTED=0
+CLEANED=0
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8)
+
+usage() {
+    cat >&2 <<'EOF'
+usage: qualification/profile.sh --profile plan|observe|canary|maintenance|isolated --out DIR [options]
+
+  --plan                      render the profile plan (default)
+  --execute                   execute an authorized profile
+  --authorize                 acknowledge explicit scoped authorization
+  --profile NAME              plan|observe|canary|maintenance|isolated
+  --test-id ID                exact authorized test id (canary/maintenance)
+  --router USER@HOST          management endpoint
+  --device-id ID              exact expected device identity
+  --firmware VERSION          exact expected /etc/version
+  --artifact PATH             package under test (isolated)
+  --config PATH               configuration command file (isolated)
+  --authorization PATH        scoped authorization JSON (canary/maintenance/isolated)
+  --out DIR                   results directory
+
+Default profile is Plan, which never contacts a router. Observe is read-only and
+takes no authorization file. Canary/maintenance require --test-id plus an
+authorization file with a not_after deadline; isolated also needs
+SADR_QUAL_ISOLATED=1. No generic production-safety bypass exists.
+EOF
+    exit 2
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --plan) MODE=plan; shift ;;
+        --execute) MODE=execute; shift ;;
+        --authorize) AUTHORIZED=1; shift ;;
+        --profile) [ $# -ge 2 ] || usage; PROFILE=$2; shift 2 ;;
+        --test-id) [ $# -ge 2 ] || usage; TEST_ID=$2; shift 2 ;;
+        --router) [ $# -ge 2 ] || usage; ROUTER=$2; shift 2 ;;
+        --device-id) [ $# -ge 2 ] || usage; DEVICE_ID=$2; shift 2 ;;
+        --firmware) [ $# -ge 2 ] || usage; FIRMWARE=$2; shift 2 ;;
+        --artifact) [ $# -ge 2 ] || usage; ARTIFACT=$2; shift 2 ;;
+        --config) [ $# -ge 2 ] || usage; CONFIG=$2; shift 2 ;;
+        --authorization) [ $# -ge 2 ] || usage; AUTH_FILE=$2; shift 2 ;;
+        --out) [ $# -ge 2 ] || usage; OUT=$2; shift 2 ;;
+        -h|--help) usage ;;
+        *) echo "unknown option: $1" >&2; usage ;;
+    esac
+done
+case "$PROFILE" in plan|observe|canary|maintenance|isolated) ;; *) usage ;; esac
+[ -n "$OUT" ] || usage
+mkdir -p "$OUT"
+TSV="$OUT/results.tsv"
+: >"$TSV"
+
+record() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" \
+    "$(printf '%s' "$4" | tr '\t\n' '  ')" "$(printf '%s' "$5" | tr '\t\n' '  ')" >>"$TSV"; }
+
+report() {
+    local mode=$1
+    python3 "$ROOT/qualification/report.py" --mode "$mode" --profile "$PROFILE" \
+        --tsv "$TSV" --out "$OUT" --router "$ROUTER" --artifact "$ARTIFACT" \
+        --firmware "$FIRMWARE"
+}
+
+# A run is complete only when every executed step passed. Observe uses the same
+# check: a failed read-only collection must not report success.
+check_complete() {
+    python3 - "$OUT/results.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+bad = [s for s in d["steps"] if s["status"] != "pass"]
+if bad:
+    print("profile incomplete:", ", ".join(f'{s["id"]}={s["status"]}' for s in bad), file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+plan_profile() {
+    case "$PROFILE" in
+        observe)
+            record preflight "Verify exact firmware/kernel/device" planned "not executed in plan mode" "ssh identity"
+            record independent-management "Operator attests read-only access and recovery path" planned "not executed in plan mode" "operator attestation"
+            record observe "Collect read-only identity/RPDB/table/interface/systemd/resource baseline" planned "not executed in plan mode" "ssh read-only inventory"
+            record resources "Record CPU/memory/load baseline" planned "not executed in plan mode" "ssh resource commands"
+            ;;
+        canary)
+            record preflight "Verify exact firmware/kernel/device" planned "not executed in plan mode" "ssh identity"
+            record independent-management "Operator attests independent management and rollback path" planned "not executed in plan mode" "operator attestation"
+            record backup "Snapshot rules/routes/config/packages" planned "not executed in plan mode" "ssh/scp snapshots"
+            record canary "Execute the exact authorized synthetic canary only" planned "not executed in plan mode" "SADR_QUAL_CANARY_CMD"
+            record cleanup "Delete only the exact authorized test objects" planned "not executed in plan mode" "SADR_QUAL_CLEANUP_CMD"
+            ;;
+        maintenance)
+            record preflight "Verify exact firmware/kernel/device" planned "not executed in plan mode" "ssh identity"
+            record independent-management "Operator attests independent management and recovery path" planned "not executed in plan mode" "operator attestation"
+            record backup "Snapshot rules/routes/config/packages" planned "not executed in plan mode" "ssh/scp snapshots"
+            record maintenance "Execute the exact authorized maintenance test" planned "not executed in plan mode" "SADR_QUAL_MAINTENANCE_CMD"
+            record cleanup "Delete only the exact authorized test objects" planned "not executed in plan mode" "SADR_QUAL_CLEANUP_CMD"
+            ;;
+    esac
+    report plan
+    echo "plan written to $OUT/results.json and $OUT/results.md"
+    exit 0
+}
+
+if [ "$MODE" = "plan" ]; then
+    case "$PROFILE" in
+        plan|isolated)
+            SADR_QUAL_PROFILE="$PROFILE" exec "$ROOT/qualification/run.sh" --plan --out "$OUT" --router "$ROUTER" \
+                --artifact "$ARTIFACT" --firmware "$FIRMWARE"
+            ;;
+        observe|canary|maintenance)
+            plan_profile
+            ;;
+    esac
+fi
+
+# Everything below this line can contact the router.
+[ "$AUTHORIZED" -eq 1 ] || { echo "FAIL: --execute requires --authorize" >&2; exit 2; }
+[ -n "$ROUTER" ] || { echo "FAIL: --router required" >&2; exit 2; }
+case "$PROFILE" in
+    observe|canary|maintenance|isolated) ;;
+    *) echo "FAIL: profile $PROFILE cannot execute" >&2; exit 2 ;;
+esac
+# Reject option injection and whitespace before the value ever reaches ssh.
+case "$ROUTER" in
+    -*|*[[:space:]]*|*[!A-Za-z0-9._@:%-]*)
+        echo "FAIL: --router contains unsupported characters" >&2
+        exit 2
+        ;;
+esac
+command -v ssh >/dev/null 2>&1 || { echo "FAIL: ssh required" >&2; exit 2; }
+
+SCOPE=""
+RECOVERY=""
+ARTIFACT_SHA=""
+if [ "$PROFILE" != "observe" ]; then
+    [ -n "$DEVICE_ID" ] || { echo "FAIL: --device-id required" >&2; exit 2; }
+    [ -n "$AUTH_FILE" ] || { echo "FAIL: --authorization required" >&2; exit 2; }
+    [ -f "$AUTH_FILE" ] || { echo "FAIL: authorization file not found" >&2; exit 2; }
+    auth_args=(--file "$AUTH_FILE" --profile "$PROFILE" --device "$DEVICE_ID")
+    if [ -n "$TEST_ID" ]; then auth_args+=(--test-id "$TEST_ID"); fi
+    if [ -n "$ARTIFACT" ]; then auth_args+=(--artifact "$ARTIFACT"); fi
+    # The validated authorization is consumed, never discarded: duration, scope,
+    # recovery and artifact hash come from it, not from re-reading the file.
+    if ! auth_json=$(python3 "$ROOT/qualification/authorization.py" "${auth_args[@]}"); then
+        echo "FAIL: authorization rejected" >&2
+        exit 2
+    fi
+    MAXDUR=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["max_duration_seconds"])' <<<"$auth_json")
+    SCOPE=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["approved_mutation_scope"])' <<<"$auth_json")
+    RECOVERY=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["recovery"])' <<<"$auth_json")
+    ARTIFACT_SHA=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["artifact_sha256"])' <<<"$auth_json")
+    export SADR_QUAL_APPROVED_SCOPE="$SCOPE"
+    export SADR_QUAL_RECOVERY="$RECOVERY"
+    export SADR_QUAL_TEST_ID="$TEST_ID"
+    if [ -n "$ARTIFACT_SHA" ]; then export SADR_QUAL_ARTIFACT_SHA256="$ARTIFACT_SHA"; fi
+fi
+if [ "$PROFILE" = "isolated" ]; then
+    [ "${SADR_QUAL_ISOLATED:-0}" = "1" ] || { echo "FAIL: isolated requires SADR_QUAL_ISOLATED=1" >&2; exit 2; }
+    if [ -z "$ARTIFACT" ] || [ -z "$CONFIG" ]; then
+        echo "FAIL: isolated requires --artifact/--config" >&2
+        exit 2
+    fi
+    SADR_QUAL_ISOLATED=1 SADR_QUAL_PROFILE="$PROFILE" exec "$ROOT/qualification/run.sh" --execute --authorize \
+        --router "$ROUTER" --device-id "$DEVICE_ID" --firmware "$FIRMWARE" \
+        --artifact "$ARTIFACT" --config "$CONFIG" --out "$OUT"
+fi
+
+set +e
+identity=$(ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -r; cat /proc/device-tree/model 2>/dev/null || true' 2>&1)
+rc=$?
+set -e
+version=$(printf '%s\n' "$identity" | sed -n '1p')
+kernel=$(printf '%s\n' "$identity" | sed -n '2p')
+preflight_step="Verify exact firmware/kernel"
+if [ -n "$DEVICE_ID" ]; then preflight_step="Verify exact firmware/kernel/device"; fi
+if [ "$rc" -ne 0 ] || ! printf '%s' "$version" | grep -Eq '^EdgeRouter\.ER-e50\.v3\.0\.1\.5862409\.' \
+    || [ "$kernel" != "4.14.54-UBNT" ] \
+    || { [ -n "$FIRMWARE" ] && [ "$version" != "$FIRMWARE" ]; } \
+    || { [ -n "$DEVICE_ID" ] && ! printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; }; then
+    record preflight "$preflight_step" fail "unexpected identity" "ssh identity"
+    report execute
+    exit 1
+fi
+record preflight "$preflight_step" pass "version=$version kernel=$kernel" "ssh identity"
+record independent-management "Operator attests independent management and rollback path" pass \
+    "operator attestation, not independently verified: $RECOVERY" "operator attestation"
+
+if [ "$PROFILE" = "observe" ]; then
+    if {
+        ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -a; ip -V; systemctl --version | head -1; ip -6 rule show; ip -6 route show table all; ip -6 addr show; ip -d link show; free -m; uptime; df -h / /config'
+    } >"$OUT/observe.txt" 2>&1; then
+        record observe "Collect read-only baseline" pass "saved to $OUT/observe.txt" "ssh read-only inventory"
+    else
+        record observe "Collect read-only baseline" fail "collection failed" "ssh read-only inventory"
+    fi
+    report execute
+    check_complete
+    exit 0
+fi
+
+# Mutating profiles: snapshot, run exactly one authorized adapter, clean up.
+run_cleanup() {
+    if [ "$CLEANED" -eq 1 ]; then return 0; fi
+    CLEANED=1
+    if [ -z "${SADR_QUAL_CLEANUP_CMD:-}" ]; then return 1; fi
+    timeout "$CLEANUP_TIMEOUT" bash -c "$SADR_QUAL_CLEANUP_CMD"
+}
+
+# Losing this session must not leave the authorized test objects behind. The trap
+# runs only when a mutation actually started and is idempotent with the normal path.
+on_exit() {
+    local rc=$?
+    if [ "$MUTATION_STARTED" -eq 1 ] && [ "$CLEANED" -eq 0 ]; then
+        echo "WARN: interrupted after mutation; running authorized cleanup (recovery: $RECOVERY)" >&2
+        if run_cleanup >"$OUT/cleanup.trap.log" 2>&1; then
+            echo "WARN: trap cleanup returned 0; verify absence manually" >&2
+        else
+            echo "FAIL: trap cleanup failed; manual recovery required: $RECOVERY" >&2
+        fi
+    fi
+    exit "$rc"
+}
+trap on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if {
+    ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /config/config.boot' >"$OUT/config.boot.before" 2>/dev/null
+    ssh "${SSH_OPTS[@]}" "$ROUTER" 'ip -6 rule show' >"$OUT/rules.before" 2>/dev/null
+    ssh "${SSH_OPTS[@]}" "$ROUTER" 'ip -6 route show table all' >"$OUT/routes.before" 2>/dev/null
+    ssh "${SSH_OPTS[@]}" "$ROUTER" 'dpkg -l' >"$OUT/packages.before" 2>/dev/null
+}; then
+    record backup "Snapshot rules/routes/config/packages" pass "saved under $OUT; scope: $SCOPE" "ssh/scp snapshots"
+else
+    record backup "Snapshot rules/routes/config/packages" fail "snapshot failed" "ssh/scp snapshots"
+    report execute
+    exit 1
+fi
+if [ "$PROFILE" = "canary" ]; then
+    var=SADR_QUAL_CANARY_CMD; id=canary
+else
+    var=SADR_QUAL_MAINTENANCE_CMD; id=maintenance
+fi
+[ -n "${!var:-}" ] || { record "$id" "Execute authorized test" blocked "missing $var" ""; report execute; exit 1; }
+[ -n "${SADR_QUAL_CLEANUP_CMD:-}" ] || { record cleanup "Delete exact test objects" blocked "missing SADR_QUAL_CLEANUP_CMD" ""; report execute; exit 1; }
+export SADR_QUAL_CONFIG_FILE="$CONFIG"
+MUTATION_STARTED=1
+set +e
+out=$(timeout "$MAXDUR" bash -c "${!var}" 2>&1)
+rc=$?
+set -e
+detail=$(printf '%s\n' "$out" | tail -c 600)
+if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d.get("ok") is True
+assert isinstance(d.get("probes"),int) and d["probes"] > 0
+assert d.get("wrong_provider") == 0
+' >/dev/null 2>&1; then
+    record "$id" "Execute authorized test" pass "$detail" "$var"
+else
+    record "$id" "Execute authorized test" fail "rc=$rc or invalid evidence: $detail" "$var"
+fi
+set +e
+run_cleanup >"$OUT/cleanup.log" 2>&1
+crc=$?
+set -e
+if [ "$crc" -eq 0 ]; then record cleanup "Delete exact test objects" pass "cleanup returned 0" "SADR_QUAL_CLEANUP_CMD";
+else record cleanup "Delete exact test objects" fail "cleanup rc=$crc" "SADR_QUAL_CLEANUP_CMD"; fi
+report execute
+check_complete
