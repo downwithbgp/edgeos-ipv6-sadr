@@ -20,7 +20,7 @@ hardware-qualified product.
 | Package build/lifecycle/artifact | PASS | artifact 20/20; lifecycle 13/13; reproducible hash |
 | Actual CI push/PR (pre-Phase IV) | PASS | final code `db7b64b`; docs head `4acff35` |
 | CI on the Phase IV head | PASS | `5da9759`: push run 46020441263 and PR run 46020448297, all jobs success on `checkout@v7.0.1` |
-| Phase V-A CI | NOT RUN | pending the Phase V-A push; the R1 simulation is part of the netns job |
+| Phase V-A CI | PASS | `e5ff8fb`: push run 46028355899 and PR run 46028363022, all jobs success; R1 simulation in the netns job |
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
 | Production canary R1 (off-device readiness) | PASS | adapter/cleanup bound by SHA-256 (candidate hashes tested); qualification 42 + 13 assertions; generic-Linux A/B/A 8/8; netns 145/0 |
 | Production canary R1 (target execution) | BLOCKED | ready for authorization; needs root/CAP_NET_ADMIN on the controller and a maintainer-set `not_after` plus approval |

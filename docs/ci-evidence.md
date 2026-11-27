@@ -125,3 +125,23 @@ Phase IV changes no product source or package content. The package hash for the 
 remains `f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`; later commits after the
 code head `db7b64b` are qualification tooling and documentation. PR #1 remains draft and unmerged;
 no release was published.
+
+## 10. Phase V-A runs (production-aware R1 preparation)
+
+Phase V-A adds the R1 adapter, device-local cleanup, authorization binding and tests. GitHub Actions
+on the Phase V-A head (`e5ff8fb`) both succeeded, with all three jobs green:
+
+| Trigger | Run | Result |
+|---|---|---|
+| push `feat/v0.1.0` (`e5ff8fb`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46028355899> | success: `lint-and-unit`, `netns`, `package` |
+| pull request #1 (`e5ff8fb`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46028363022> | success: `lint-and-unit`, `netns`, `package` |
+
+Local evidence for the same tree: `make lint`; `make test` (619 unit/property/failure assertions plus
+the qualification gates: profile/authorization 42 assertions and cleanup 13/13); package lifecycle
+13/13; netns **145/0** plus the R1 A/B/A simulation **8/8**; iproute2 parity 9/0. Job log text is not
+reproduced (the logs API requires authentication); the recorded evidence is the job conclusion plus
+the local run of the same commands.
+
+No product source or package content changed in Phase V-A. The package hash for the v0.1.0 candidate
+remains `f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`. PR #1 remains draft and
+unmerged; no release was published. No production mutation was performed: R1 is a proposal only.
