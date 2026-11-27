@@ -7,15 +7,12 @@ case "$1" in
     *) exit 0 ;;
 esac
 
-# Test and CI escape hatch only. Production installation remains gated by the
-# firmware/kernel checks below and by separate authorization.
-if [ "${EDGEOS_IPV6_SADR_SKIP_PLATFORM_CHECK:-0}" = "1" ]; then
-    exit 0
-fi
-
-VERSION_FILE=${EDGEOS_IPV6_SADR_VERSION_FILE:-/etc/version}
-KERNEL=${EDGEOS_IPV6_SADR_KERNEL:-$(uname -r)}
-IP_BIN=${EDGEOS_IPV6_SADR_IP:-ip}
+# The TEST_* variables exist only for the packaging fixture harness. They are
+# environment-controlled and therefore only usable by a caller that already
+# controls the privileged package-manager environment.
+VERSION_FILE=${EDGEOS_IPV6_SADR_TEST_VERSION_FILE:-/etc/version}
+KERNEL=${EDGEOS_IPV6_SADR_TEST_KERNEL:-$(uname -r)}
+IP_BIN=${EDGEOS_IPV6_SADR_TEST_IP:-ip}
 
 if [ ! -r "$VERSION_FILE" ]; then
     echo "edgeos-ipv6-sadr: cannot read $VERSION_FILE; unsupported platform" >&2

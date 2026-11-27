@@ -57,48 +57,48 @@ PREINST="$ROOT/debian/preinst"
 PRERM="$ROOT/debian/prerm"
 POSTINST="$ROOT/debian/postinst"
 POSTRM="$ROOT/debian/postrm"
-COMMON_ENV=(EDGEOS_IPV6_SADR_IP="$TMP/ip" EDGEOS_IPV6_SADR_API="$TMP/no-api")
+COMMON_ENV=(EDGEOS_IPV6_SADR_TEST_IP="$TMP/ip" EDGEOS_IPV6_SADR_TEST_API="$TMP/no-api")
 
 run_expect "preinst refuses an unsupported firmware" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_VERSION_FILE="$TMP/version-bad" \
-    EDGEOS_IPV6_SADR_KERNEL=4.14.54-UBNT "$PREINST" install
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_VERSION_FILE="$TMP/version-bad" \
+    EDGEOS_IPV6_SADR_TEST_KERNEL=4.14.54-UBNT "$PREINST" install
 run_expect "preinst refuses an unsupported kernel" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_VERSION_FILE="$TMP/version-good" \
-    EDGEOS_IPV6_SADR_KERNEL=5.10.0-generic "$PREINST" install
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_VERSION_FILE="$TMP/version-good" \
+    EDGEOS_IPV6_SADR_TEST_KERNEL=5.10.0-generic "$PREINST" install
 run_expect "preinst refuses a missing firmware file" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_VERSION_FILE="$TMP/missing" \
-    EDGEOS_IPV6_SADR_KERNEL=4.14.54-UBNT "$PREINST" install
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_VERSION_FILE="$TMP/missing" \
+    EDGEOS_IPV6_SADR_TEST_KERNEL=4.14.54-UBNT "$PREINST" install
 run_expect "preinst accepts the supported platform" 0 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_VERSION_FILE="$TMP/version-good" \
-    EDGEOS_IPV6_SADR_KERNEL=4.14.54-UBNT "$PREINST" install
-run_expect "preinst test escape hatch is explicit" 0 \
-    env EDGEOS_IPV6_SADR_SKIP_PLATFORM_CHECK=1 "$PREINST" install
-
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_VERSION_FILE="$TMP/version-good" \
+    EDGEOS_IPV6_SADR_TEST_KERNEL=4.14.54-UBNT "$PREINST" install
 printf 'protocols { ipv6-sadr { policy p { source-prefix 2001:db8::/56 } } }\n' \
     >"$TMP/configured.boot"
 : >"$TMP/empty.boot"
 
 run_expect "prerm allows removal without SADR state" 0 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_CONFIG_BOOT="$TMP/empty.boot" "$PRERM" remove
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT="$TMP/empty.boot" "$PRERM" remove
 run_expect "prerm refuses saved SADR configuration" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_CONFIG_BOOT="$TMP/configured.boot" "$PRERM" remove
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT="$TMP/configured.boot" "$PRERM" remove
 run_expect "prerm refuses live managed rules" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_CONFIG_BOOT="$TMP/empty.boot" \
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT="$TMP/empty.boot" \
     FAKE_MANAGED_RULE=1 "$PRERM" remove
 run_expect "prerm refuses live owned routes" 1 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_CONFIG_BOOT="$TMP/empty.boot" \
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT="$TMP/empty.boot" \
     FAKE_MANAGED_ROUTE=1 "$PRERM" remove
 run_expect "prerm allows upgrade with saved configuration" 0 \
-    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_CONFIG_BOOT="$TMP/configured.boot" "$PRERM" upgrade
+    env "${COMMON_ENV[@]}" EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT="$TMP/configured.boot" "$PRERM" upgrade
 
 run_expect "postinst configure is safe without systemd" 0 \
-    env EDGEOS_IPV6_SADR_SYSTEMCTL=/bin/false "$POSTINST" configure
+    env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false "$POSTINST" configure
 
 mkdir -p "$TMP/state"
 printf 'state\n' >"$TMP/state/status.json"
+run_expect "postrm refuses an unexpected state path" 1 \
+    env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false \
+    EDGEOS_IPV6_SADR_TEST_STATE_DIR=/etc "$POSTRM" purge
 run_expect "postrm purge removes runtime state" 0 \
-    env EDGEOS_IPV6_SADR_SYSTEMCTL=/bin/false \
-    EDGEOS_IPV6_SADR_STATE_DIR="$TMP/state" "$POSTRM" purge
+    env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false \
+    EDGEOS_IPV6_SADR_TEST_STATE_DIR="$TMP/state" "$POSTRM" purge
 if [ ! -e "$TMP/state" ]; then
     ok "postrm purge leaves no runtime state directory"
 else

@@ -4,14 +4,22 @@ set -e
 
 case "$1" in
     remove|purge)
-        SYSTEMCTL=${EDGEOS_IPV6_SADR_SYSTEMCTL:-systemctl}
+        SYSTEMCTL=${EDGEOS_IPV6_SADR_TEST_SYSTEMCTL:-systemctl}
         if command -v "$SYSTEMCTL" >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
             "$SYSTEMCTL" stop edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
             "$SYSTEMCTL" disable edgeos-ipv6-sadr-guard.service \
                 edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
             "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
         fi
-        rm -rf "${EDGEOS_IPV6_SADR_STATE_DIR:-/run/edgeos-ipv6-sadr}"
+        STATE_DIR=${EDGEOS_IPV6_SADR_TEST_STATE_DIR:-/run/edgeos-ipv6-sadr}
+        case "$STATE_DIR" in
+            /run/edgeos-ipv6-sadr|/tmp/*) ;;
+            *)
+                echo "edgeos-ipv6-sadr: refusing unexpected runtime state path: $STATE_DIR" >&2
+                exit 1
+                ;;
+        esac
+        rm -rf -- "$STATE_DIR"
         ;;
 esac
 

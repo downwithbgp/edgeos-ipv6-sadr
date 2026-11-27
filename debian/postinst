@@ -3,7 +3,7 @@
 set -e
 
 if [ "$1" = "configure" ]; then
-    SYSTEMCTL=${EDGEOS_IPV6_SADR_SYSTEMCTL:-systemctl}
+    SYSTEMCTL=${EDGEOS_IPV6_SADR_TEST_SYSTEMCTL:-systemctl}
     if command -v "$SYSTEMCTL" >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
         "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
         "$SYSTEMCTL" enable edgeos-ipv6-sadr-guard.service \

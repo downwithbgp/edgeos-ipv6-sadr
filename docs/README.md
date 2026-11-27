@@ -16,6 +16,7 @@
 | [`boot-safety-review.md`](boot-safety-review.md) | Early-boot ordering, activation and failure-propagation findings |
 | [`target-emulation-investigation.md`](target-emulation-investigation.md) | Emulation blockers and generic-Linux iproute2 parity evidence |
 | [`performance-characterization.md`](performance-characterization.md) | Phase breakdown, scaling, monitor resources and proposed target budgets |
+| [`package-safety-review.md`](package-safety-review.md) | Maintainer-script trust boundary, lifecycle behavior and residual test seams |
 | [`configuration-transactions.md`](configuration-transactions.md) | Working/active commit, rollback, interruption and concurrency simulation results |
 | [`hardware-qualification-plan.md`](hardware-qualification-plan.md) | Plan only; target qualification is separately authorized |
 | [`migration-plan.md`](migration-plan.md) | Plan only; coverage-first cutover and bounded rollback |

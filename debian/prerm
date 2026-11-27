@@ -6,9 +6,9 @@ set -e
 # that are no longer owned, and it must not silently discard live SADR state.
 [ "$1" = "remove" ] || exit 0
 
-CONFIG_BOOT=${EDGEOS_IPV6_SADR_CONFIG_BOOT:-/config/config.boot}
-API=${EDGEOS_IPV6_SADR_API:-/opt/vyatta/sbin/my_cli_shell_api}
-IP_BIN=${EDGEOS_IPV6_SADR_IP:-ip}
+CONFIG_BOOT=${EDGEOS_IPV6_SADR_TEST_CONFIG_BOOT:-/config/config.boot}
+API=${EDGEOS_IPV6_SADR_TEST_API:-/opt/vyatta/sbin/my_cli_shell_api}
+IP_BIN=${EDGEOS_IPV6_SADR_TEST_IP:-ip}
 fail=0
 
 if [ -r "$CONFIG_BOOT" ] && grep -q 'ipv6-sadr' "$CONFIG_BOOT"; then
