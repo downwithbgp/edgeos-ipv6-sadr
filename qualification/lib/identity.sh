@@ -67,8 +67,15 @@ sadr_identity_parse() { # stdin -> SADR_ID_*; nonzero on any malformed response
 sadr_identity_acquire() { # router; uses SADR_SSH_OPTS array and optional SADR_SSH_KEY
     local router=$1 out rc=0 key_args=()
     if [ -n "${SADR_SSH_KEY:-}" ]; then key_args=(-i "$SADR_SSH_KEY"); fi
+    # Keep SSH banner/diagnostic output out of the framed response. The caller
+    # may name a separate stderr log; otherwise stderr is merged and the parser
+    # still tolerates out-of-frame text.
     # shellcheck disable=SC2029 # the framed command is intentionally one remote command
-    out=$(ssh "${SADR_SSH_OPTS[@]}" "${key_args[@]}" "$router" "$SADR_IDENTITY_REMOTE" 2>&1) || rc=$?
+    if [ -n "${SADR_ID_STDERR:-}" ]; then
+        out=$(ssh "${SADR_SSH_OPTS[@]}" "${key_args[@]}" "$router" "$SADR_IDENTITY_REMOTE" 2>>"$SADR_ID_STDERR") || rc=$?
+    else
+        out=$(ssh "${SADR_SSH_OPTS[@]}" "${key_args[@]}" "$router" "$SADR_IDENTITY_REMOTE" 2>&1) || rc=$?
+    fi
     [ "$rc" -eq 0 ] || return 1
     sadr_identity_parse <<<"$out"
 }

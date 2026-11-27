@@ -1,0 +1,18 @@
+{
+  "files": {
+    "qualification/adapters/r1-canary.sh": "7644a897e0ce329f5f44235cad05012ff50294be3de2705003c30a4bab9fbbf6",
+    "qualification/adapters/r1-cleanup.sh": "0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883",
+    "qualification/adapters/r1-install.sh": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f",
+    "qualification/authorization.py": "4be449f4ac36b34cd49bf31e73ad43407597e7ce848d6e3152c0f9a39458250b",
+    "qualification/execution_manifest.py": "92a61d9b150b3b8ccd6fe3133021589820212156bbc596a34d059543627923f5",
+    "qualification/finalize-candidate.sh": "001bc2ab9e4d863718dc867524ef4423e6be6f349c06d82039fd407a67455b33",
+    "qualification/lib/controller.sh": "b04af1993d8121e794ba112abe98e188fcd2f5e34d3711d40f039f322d8c5999",
+    "qualification/lib/identity.sh": "f2157a9a71da06f5448fa17746dbee1d723b3d97769b1bcb8bf36fe4a4449310",
+    "qualification/profile.sh": "f25728fe7f52319828a5c76c20b9b5899e77601565ae4e63c829a2a74d900810",
+    "qualification/report.py": "a6b8be4f9cf612e913d0931a4748e35487cdc456df22758805f90543ba68618f",
+    "qualification/run.sh": "c027fa04ec9195f430729bd50b40d41ce71a7a909bfb1e591fe581a4aa1d5a11"
+  },
+  "generated_utc": "2026-11-27T18:21:50Z",
+  "manifest_sha256": "c94ddf2a493bea562d9a1d8b76a52c3bf7ccbf96b8a7c22f7f9a5a7118db2c7a",
+  "schema": 1
+}

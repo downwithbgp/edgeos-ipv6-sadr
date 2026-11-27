@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+MANIFEST="$ROOT/docs/r1-execution-manifest.json"
+MANIFEST_SHA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["manifest_sha256"])' "$MANIFEST")
 TMP="${TMPDIR:-/tmp}/sadr-profile-test.$$"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/out"
@@ -28,9 +30,121 @@ CLEANUP_SCRIPT="$TMP/cleanup.sh"
 cat >"$ADAPTER" <<'SH'
 #!/bin/bash
 case "${1:-}" in
+    --preflight)
+        python3 - "${SADR_QUAL_OUT:?}" <<'PY'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+doc = {
+    "schema": 2,
+    "mode": "preflight",
+    "status": "pass",
+    "ok": True,
+    "started_utc": "2026-01-01T00:00:00Z",
+    "finished_utc": "2026-01-01T00:00:01Z",
+    "failure": None,
+    "stages": [{"stage": "stage1", "status": "pass", "detail": "preflight",
+                "started_utc": "2026-01-01T00:00:00Z", "finished_utc": "2026-01-01T00:00:01Z"}],
+    "probes": {},
+    "wrong_provider": 0,
+    "mutation_boundary_crossed": False,
+    "mutation_boundary_utc": None,
+    "resources": {"namespaces": []},
+    "cleanup": {
+        "local": {"status": "pass", "detail": ""},
+        "device": {"status": "not_attempted", "detail": ""},
+    },
+}
+out.mkdir(parents=True, exist_ok=True)
+(out / "adapter-result.json").write_text(json.dumps(doc))
+print("Welcome to EdgeOS banner on stdout; result file is authoritative")
+PY
+        ;;
+    --baseline)
+        python3 - "${SADR_QUAL_OUT:?}" "${FAKE_BASELINE_FAIL:-0}" <<'PY'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+fail = sys.argv[2] == "1"
+failure = {
+    "class": "dataplane_baseline",
+    "stage": "stage2",
+    "message": "A1 matching delivery 0/20",
+    "command": "",
+    "exit_status": 1,
+    "source": "test",
+} if fail else None
+doc = {
+    "schema": 2,
+    "mode": "baseline",
+    "status": "fail" if fail else "pass",
+    "ok": not fail,
+    "started_utc": "2026-01-01T00:00:00Z",
+    "finished_utc": "2026-01-01T00:00:01Z",
+    "failure": failure,
+    "stages": [
+        {"stage": "stage0", "status": "pass", "detail": "controller prepared",
+         "started_utc": "2026-01-01T00:00:00Z", "finished_utc": "2026-01-01T00:00:00Z"},
+        {"stage": "stage1", "status": "pass", "detail": "target preflight",
+         "started_utc": "2026-01-01T00:00:00Z", "finished_utc": "2026-01-01T00:00:00Z"},
+        {"stage": "stage2", "status": "fail" if fail else "pass",
+         "detail": "A1 matching=0/20 control=0/10" if fail else "A1 matching=20/20 control=10/10",
+         "started_utc": "2026-01-01T00:00:00Z", "finished_utc": "2026-01-01T00:00:01Z"},
+    ],
+    "probes": {},
+    "wrong_provider": 0,
+    "mutation_boundary_crossed": False,
+    "mutation_boundary_utc": None,
+    "resources": {"namespaces": []},
+    "cleanup": {
+        "local": {"status": "pass", "detail": ""},
+        "device": {"status": "not_attempted", "detail": ""},
+    },
+}
+out.mkdir(parents=True, exist_ok=True)
+(out / "adapter-result.json").write_text(json.dumps(doc))
+print("Welcome to EdgeOS banner on stdout; result file is authoritative")
+raise SystemExit(1 if fail else 0)
+PY
+        ;;
     fail) printf '{"ok": false, "probes": 0, "wrong_provider": 0}\n' ;;
     slow) touch "$2"; sleep 10 ;;
-    *) printf '{"ok": true, "probes": 12, "wrong_provider": 0}\n' ;;
+    *)
+        if [ "${FAKE_RESULT_FILE:-0}" = "1" ]; then
+            python3 - "${SADR_QUAL_OUT:?}" <<'PY'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+doc = {
+    "schema": 2,
+    "mode": "execute",
+    "status": "pass",
+    "ok": True,
+    "started_utc": "2026-01-01T00:00:00Z",
+    "finished_utc": "2026-01-01T00:00:02Z",
+    "failure": None,
+    "stages": [
+        {"stage": "b", "status": "pass", "detail": "B matching=0 control=10",
+         "started_utc": "2026-01-01T00:00:00Z", "finished_utc": "2026-01-01T00:00:01Z"},
+        {"stage": "a2", "status": "pass", "detail": "A2 matching=20 control=10",
+         "started_utc": "2026-01-01T00:00:01Z", "finished_utc": "2026-01-01T00:00:02Z"},
+    ],
+    "probes": {"a1_matching": 20, "a1_control": 10, "b_matching": 0, "b_control": 10,
+               "a2_matching": 20, "a2_control": 10},
+    "wrong_provider": 0,
+    "mutation_boundary_crossed": True,
+    "mutation_boundary_utc": "2026-01-01T00:00:00Z",
+    "resources": {"namespaces": []},
+    "cleanup": {
+        "local": {"status": "pass", "detail": ""},
+        "device": {"status": "pass", "detail": ""},
+    },
+}
+out.mkdir(parents=True, exist_ok=True)
+(out / "adapter-result.json").write_text(json.dumps(doc))
+print("Welcome to EdgeOS banner on stdout; result file is authoritative")
+PY
+            exit 0
+        fi
+        printf '{"ok": true, "probes": 12, "wrong_provider": 0}\n'
+        ;;
 esac
 SH
 # shellcheck disable=SC2016 # the written script intentionally contains "$1"
@@ -68,9 +182,9 @@ expect_fail() { # description command...
 
 write_auth() { # file profile target_class [overrides as JSON object]
     local file=$1 profile=$2 target=$3 overrides=${4:-}
-    python3 - "$file" "$profile" "$target" "$overrides" "$DEV_FP" "$ADAPTER_SHA" "$CLEANUP_SHA" "$INSTALL_SHA" <<'PY'
+    python3 - "$file" "$profile" "$target" "$overrides" "$DEV_FP" "$ADAPTER_SHA" "$CLEANUP_SHA" "$INSTALL_SHA" "$MANIFEST_SHA" <<'PY'
 import json, sys
-file, profile, target, overrides, fp, adapter, cleanup, install = sys.argv[1:9]
+file, profile, target, overrides, fp, adapter, cleanup, install, manifest = sys.argv[1:10]
 doc = {
     "device_id": "ER-X-TEST",
     "device_fingerprint": fp,
@@ -87,6 +201,7 @@ if profile in ("canary", "maintenance"):
     doc["adapter_sha256"] = adapter
     doc["cleanup_sha256"] = cleanup
     doc["install_sha256"] = install
+doc["execution_manifest_sha256"] = manifest
 doc.update(json.loads(overrides) if overrides else {})
 with open(file, "w", encoding="utf-8") as fh:
     json.dump(doc, fh)
@@ -177,6 +292,12 @@ write_auth "$MISMATCH_FP" canary production '{"device_fingerprint": "00000000000
 expect_fail "profile rejects a device fingerprint mismatch" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
         --router admin@router.invalid --device-id ER-X-TEST --authorization "$MISMATCH_FP" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
+MISMATCH_MANIFEST="$TMP/mismatch-manifest.json"
+write_auth "$MISMATCH_MANIFEST" canary production '{"execution_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}'
+expect_fail "profile rejects an execution manifest mismatch" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$MISMATCH_MANIFEST" \
         --test-id R1-guard-only "${CANARY_ARGS[@]}"
 
 # Option injection must be refused before it can be interpreted as an ssh option.
@@ -308,6 +429,86 @@ if [ ! -e "$CLEANUP_MARK" ]; then
     exit 1
 fi
 echo "PASS: authorized cleanup runs after the canary"
+
+# The baseline path must read the adapter's structured result file, not stdout.
+if SADR_QUAL_TEST_ADAPTER=1 SADR_QUAL_BASELINE_TIMEOUT=30 bash "$ROOT/qualification/profile.sh" --profile canary --baseline \
+    --out "$TMP/baseline" --router admin@router.invalid --device-id ER-X-TEST \
+    --device-fingerprint "$DEV_FP" --adapter "$ADAPTER" >/dev/null 2>&1; then
+    python3 - "$TMP/baseline/results.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["summary"]["complete"] is True, d["summary"]
+steps = {s["id"]: s for s in d["steps"]}
+assert steps["stage0"]["status"] == "pass", steps["stage0"]
+assert steps["stage1"]["status"] == "pass", steps["stage1"]
+assert steps["stage2"]["status"] == "pass", steps["stage2"]
+assert "Welcome to EdgeOS" not in steps["baseline"].get("detail", "")
+print("PASS: baseline reads the structured result file and ignores stdout")
+PY
+else
+    echo "FAIL: baseline did not complete" >&2
+    exit 1
+fi
+if FAKE_BASELINE_FAIL=1 SADR_QUAL_TEST_ADAPTER=1 SADR_QUAL_BASELINE_TIMEOUT=30 bash "$ROOT/qualification/profile.sh" \
+    --profile canary --baseline --out "$TMP/baseline-fail" --router admin@router.invalid \
+    --device-id ER-X-TEST --device-fingerprint "$DEV_FP" --adapter "$ADAPTER" >/dev/null 2>&1; then
+    echo "FAIL: a failing baseline exited zero" >&2
+    exit 1
+fi
+python3 - "$TMP/baseline-fail/results.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["summary"]["complete"] is False, d["summary"]
+steps = {s["id"]: s for s in d["steps"]}
+assert steps["stage2"]["status"] == "fail", steps["stage2"]
+assert steps["baseline"]["status"] == "fail", steps["baseline"]
+assert "dataplane_baseline" in steps["baseline"]["detail"], steps["baseline"]
+print("PASS: a failing baseline is reported from the structured result")
+PY
+
+# The preflight path must read the structured result file, not stdout.
+if bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --preflight \
+    --out "$TMP/preflight" --router admin@router.invalid --device-id ER-X-TEST \
+    --authorization "$AUTH" --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1; then
+    python3 - "$TMP/preflight/results.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["summary"]["complete"] is True, d["summary"]
+steps = {s["id"]: s for s in d["steps"]}
+assert steps["adapter-preflight"]["status"] == "pass", steps["adapter-preflight"]
+assert steps["stage1"]["status"] == "pass", steps["stage1"]
+print("PASS: preflight reads the structured result file")
+PY
+else
+    echo "FAIL: preflight did not complete" >&2
+    exit 1
+fi
+
+# The mutating result-file path must also be authoritative over stdout.
+rm -f "$CLEANUP_MARK"
+if FAKE_RESULT_FILE=1 SADR_QUAL_REQUIRE_RESULT_FILE=1 \
+    SADR_QUAL_CANARY_CMD="bash $ADAPTER" SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+    SADR_QUAL_VERIFY_CMD=true \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/resultcanary" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1; then
+    python3 - "$TMP/resultcanary/results.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["summary"]["complete"] is True, d["summary"]
+steps = {s["id"]: s for s in d["steps"]}
+assert steps["canary"]["status"] == "pass", steps["canary"]
+assert "boundary=True" in steps["canary"]["detail"], steps["canary"]
+assert steps["b"]["status"] == "pass", steps["b"]
+assert steps["a2"]["status"] == "pass", steps["a2"]
+assert steps["cleanup"]["status"] == "pass", steps["cleanup"]
+assert steps["controller-cleanup"]["status"] == "pass", steps["controller-cleanup"]
+print("PASS: mutating result-file path is authoritative")
+PY
+else
+    echo "FAIL: result-file canary did not complete" >&2
+    exit 1
+fi
 
 # A failed canary evidence object must fail the run while still cleaning up.
 rm -f "$CLEANUP_MARK"

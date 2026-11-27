@@ -35,6 +35,8 @@ if args.profile in ("canary", "maintenance"):
     for key in ("adapter_sha256", "cleanup_sha256", "install_sha256"):
         if key not in auth:
             fail(f"missing {key}", 3)
+if args.profile == "canary" and "execution_manifest_sha256" not in auth:
+    fail("missing execution_manifest_sha256", 3)
 
 if auth["profile"] != args.profile:
     fail("profile mismatch", 4)
@@ -74,7 +76,8 @@ if remaining < duration:
     fail(f"authorization expires in {int(remaining)}s, shorter than "
          f"max_duration_seconds={duration}", 15)
 
-for key in ("device_fingerprint", "adapter_sha256", "cleanup_sha256", "install_sha256"):
+for key in ("device_fingerprint", "adapter_sha256", "cleanup_sha256", "install_sha256",
+            "execution_manifest_sha256"):
     if key in auth:
         value = auth[key]
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
@@ -109,4 +112,5 @@ print(json.dumps({
     "adapter_sha256": auth.get("adapter_sha256", ""),
     "cleanup_sha256": auth.get("cleanup_sha256", ""),
     "install_sha256": auth.get("install_sha256", ""),
+    "execution_manifest_sha256": auth.get("execution_manifest_sha256", ""),
 }, sort_keys=True))

@@ -8,6 +8,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PROFILE=plan
 MODE=plan
 PREFLIGHT=0
+BASELINE=0
 ROUTER=""
 DEVICE_ID=""
 FIRMWARE=""
@@ -27,6 +28,8 @@ CLEANUP_TIMEOUT=30
 MUTATION_STARTED=0
 CLEANED=0
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -o UserKnownHostsFile="${SADR_QUAL_KNOWN_HOSTS:-$HOME/.ssh/known_hosts}" -i "${SADR_QUAL_SSH_KEY:-$HOME/.ssh/id_ed25519}")
+MANIFEST="$ROOT/docs/r1-execution-manifest.json"
+MANIFEST_SHA=""
 
 usage() {
     cat >&2 <<'EOF'
@@ -35,6 +38,7 @@ usage: qualification/profile.sh --profile plan|observe|canary|maintenance|isolat
   --plan                      render the profile plan (default)
   --execute                   execute an authorized profile
   --preflight                 read-only preflight through the real execution path
+  --baseline                  run the actual Stage 0-2 A1 baseline only (no mutation)
   --authorize                 acknowledge explicit scoped authorization
   --profile NAME              plan|observe|canary|maintenance|isolated
   --test-id ID                exact authorized test id (canary/maintenance)
@@ -63,6 +67,7 @@ while [ $# -gt 0 ]; do
         --plan) MODE=plan; shift ;;
         --execute) MODE=execute; shift ;;
         --preflight) PREFLIGHT=1; shift ;;
+        --baseline) BASELINE=1; MODE=execute; shift ;;
         --authorize) AUTHORIZED=1; shift ;;
         --profile) [ $# -ge 2 ] || usage; PROFILE=$2; shift 2 ;;
         --test-id) [ $# -ge 2 ] || usage; TEST_ID=$2; shift 2 ;;
@@ -86,6 +91,9 @@ case "$PROFILE" in plan|observe|canary|maintenance|isolated) ;; *) usage ;; esac
 mkdir -p "$OUT"
 TSV="$OUT/results.tsv"
 : >"$TSV"
+ADAPTER_RESULT="$OUT/adapter-result.json"
+ADAPTER_STAGES="$OUT/adapter-stages.tsv"
+ADAPTER_SUMMARY="$OUT/adapter-summary.txt"
 
 record() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" \
     "$(printf '%s' "$4" | tr '\t\n' '  ')" "$(printf '%s' "$5" | tr '\t\n' '  ')" >>"$TSV"; }
@@ -108,6 +116,129 @@ if bad:
     print("profile incomplete:", ", ".join(f'{s["id"]}={s["status"]}' for s in bad), file=sys.stderr)
     raise SystemExit(1)
 PY
+}
+
+
+verify_manifest() {
+    if python3 "$ROOT/qualification/execution_manifest.py" --verify --root "$ROOT" --manifest "$MANIFEST" >/dev/null 2>&1; then
+        MANIFEST_SHA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["manifest_sha256"])' "$MANIFEST")
+        return 0
+    fi
+    return 1
+}
+
+read_adapter_result() { # expected_mode
+    rm -f "$ADAPTER_STAGES" "$ADAPTER_SUMMARY"
+    python3 - "$ADAPTER_RESULT" "$1" "$ADAPTER_STAGES" "$ADAPTER_SUMMARY" <<'PY'
+import json, sys
+path, expected, stages_out, summary_out = sys.argv[1:5]
+try:
+    d = json.load(open(path, encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    print(f"adapter result unreadable: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+if d.get("schema") != 2:
+    print("adapter result schema mismatch", file=sys.stderr)
+    raise SystemExit(2)
+if d.get("mode") != expected:
+    print(f"adapter result mode {d.get('mode')!r} != {expected!r}", file=sys.stderr)
+    raise SystemExit(2)
+status = d.get("status")
+if status not in ("pass", "fail"):
+    print(f"adapter result status {status!r} is invalid", file=sys.stderr)
+    raise SystemExit(2)
+failure = d.get("failure") or {}
+summary = (f"status={status} mode={d.get('mode')} "
+           f"boundary={d.get('mutation_boundary_crossed')} "
+           f"boundary_utc={d.get('mutation_boundary_utc') or '-'}")
+if failure:
+    summary += (f" class={failure.get('class','')} stage={failure.get('stage','')} "
+                f"message={failure.get('message','')} command={failure.get('command','')} "
+                f"exit={failure.get('exit_status','')} source={failure.get('source','')}")
+open(summary_out, "w", encoding="utf-8").write(summary + "\n")
+with open(stages_out, "w", encoding="utf-8") as fh:
+    for s in d.get("stages", []):
+        detail = (f"{s.get('detail','')} "
+                  f"[{s.get('started_utc','')}..{s.get('finished_utc','')}]")
+        fh.write("\t".join((s.get("stage",""), "Adapter stage " + s.get("stage",""),
+                            s.get("status","unknown"), detail, "adapter-result.json")) + "\n")
+raise SystemExit(0 if status == "pass" else 1)
+PY
+}
+
+record_adapter_stages() {
+    [ -f "$ADAPTER_STAGES" ] || return 0
+    local sid desc status detail cmd
+    while IFS=$'\t' read -r sid desc status detail cmd; do
+        [ -n "$sid" ] || continue
+        record "$sid" "$desc" "$status" "$detail" "$cmd"
+    done <"$ADAPTER_STAGES"
+}
+
+record_adapter_result() { # expected_mode summary_id description
+    local expected=$1 sid=$2 desc=$3 rc=0 summary
+    if read_adapter_result "$expected"; then rc=0; else rc=$?; fi
+    summary=$(cat "$ADAPTER_SUMMARY" 2>/dev/null || true)
+    [ -n "$summary" ] || summary="adapter result missing or invalid (see adapter logs)"
+    if [ "$rc" -eq 0 ]; then
+        record "$sid" "$desc" pass "$summary" "adapter-result.json"
+    else
+        record "$sid" "$desc" fail "$summary" "adapter-result.json"
+    fi
+    record_adapter_stages
+    return "$rc"
+}
+
+verify_controller_cleanup() {
+    if [ ! -f "$ADAPTER_RESULT" ]; then
+        record controller-cleanup "Independent controller cleanup check" fail "adapter result missing; cannot identify controller resources" "adapter-result.json"
+        return 1
+    fi
+    local residual
+    residual=$(python3 - "$ADAPTER_RESULT" <<'PY'
+import json, shutil, subprocess, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    print("RESULT_UNREADABLE")
+    raise SystemExit(0)
+names = d.get("resources", {}).get("namespaces", [])
+if not names:
+    print("")
+    raise SystemExit(0)
+if shutil.which("ip") is None:
+    print("IP_MISSING")
+    raise SystemExit(0)
+try:
+    out = subprocess.run(["ip", "netns", "list"], capture_output=True, text=True, check=False)
+except OSError:
+    print("IP_FAILED")
+    raise SystemExit(0)
+if out.returncode != 0:
+    print("IP_FAILED")
+    raise SystemExit(0)
+present = {line.split()[0] for line in out.stdout.splitlines() if line.split()}
+print(",".join(n for n in names if n in present))
+PY
+)
+    case "$residual" in
+        "")
+            record controller-cleanup "Independent controller cleanup check" pass "no adapter namespace remains" "ip netns list"
+            return 0
+            ;;
+        RESULT_UNREADABLE)
+            record controller-cleanup "Independent controller cleanup check" fail "adapter result unreadable; cannot identify controller resources" "adapter-result.json"
+            return 1
+            ;;
+        IP_MISSING|IP_FAILED)
+            record controller-cleanup "Independent controller cleanup check" fail "cannot run ip netns list; controller cleanup unverified" "ip netns list"
+            return 1
+            ;;
+        *)
+            record controller-cleanup "Independent controller cleanup check" fail "residual controller namespaces: $residual" "ip netns list"
+            return 1
+            ;;
+    esac
 }
 
 plan_profile() {
@@ -148,6 +279,64 @@ if [ "$MODE" = "plan" ]; then
             plan_profile
             ;;
     esac
+fi
+
+# Baseline-only Stage 0-2 execution. It creates only controller-side resources
+# and sends only the bounded A1 probes; it never deploys device files, arms a
+# timer or changes the target RPDB.
+if [ "$BASELINE" -eq 1 ]; then
+    if [ "$PROFILE" != "canary" ]; then
+        echo "FAIL: --baseline requires --profile canary" >&2
+        exit 2
+    fi
+    [ -n "$ROUTER" ] || { echo "FAIL: --router required" >&2; exit 2; }
+    case "$ROUTER" in
+        -*|*[[:space:]]*|*[!A-Za-z0-9._@:%-]*)
+            echo "FAIL: --router contains unsupported characters" >&2
+            exit 2
+            ;;
+    esac
+    command -v ssh >/dev/null 2>&1 || { echo "FAIL: ssh required" >&2; exit 2; }
+    [ -n "$DEVICE_ID" ] || { echo "FAIL: --device-id required" >&2; exit 2; }
+    [ -n "$DEVICE_FP" ] || { echo "FAIL: --device-fingerprint required" >&2; exit 2; }
+    printf '%s' "$DEVICE_FP" | grep -Eq '^[0-9a-f]{64}$' || { echo "FAIL: --device-fingerprint must be 64 lowercase hex" >&2; exit 2; }
+    if [ -z "$ADAPTER" ] || [ ! -f "$ADAPTER" ]; then echo "FAIL: --adapter required" >&2; exit 2; fi
+    BASELINE_TIMEOUT="${SADR_QUAL_BASELINE_TIMEOUT:-180}"
+    case "$BASELINE_TIMEOUT" in ''|*[!0-9]*) echo "FAIL: invalid baseline timeout" >&2; exit 2 ;; esac
+    verify_manifest || { echo "FAIL: execution manifest verification failed; run qualification/finalize-candidate.sh" >&2; exit 2; }
+    record execution-manifest "Verify the execution manifest" pass "manifest_sha256=$MANIFEST_SHA" "execution_manifest.py --verify"
+    ADAPTER_SHA=$(sha256sum "$ADAPTER" | awk '{print $1}')
+    if [ "${SADR_QUAL_TEST_ADAPTER:-0}" != "1" ]; then
+        MANIFEST_ADAPTER=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["files"]["qualification/adapters/r1-canary.sh"])' "$MANIFEST") ||
+            { echo "FAIL: cannot read the manifested R1 adapter hash" >&2; exit 2; }
+        if [ "$ADAPTER_SHA" != "$MANIFEST_ADAPTER" ]; then
+            echo "FAIL: baseline adapter is not the manifested R1 adapter" >&2
+            exit 2
+        fi
+    fi
+    export SADR_QUAL_ROUTER="$ROUTER"
+    export SADR_QUAL_OUT="$OUT"
+    export SADR_QUAL_DEVICE_ID="$DEVICE_ID"
+    export SADR_QUAL_DEVICE_FINGERPRINT="$DEVICE_FP"
+    export SADR_QUAL_SSH_KEY="${SADR_QUAL_SSH_KEY:-$HOME/.ssh/id_ed25519}"
+    export SADR_QUAL_KNOWN_HOSTS="${SADR_QUAL_KNOWN_HOSTS:-$HOME/.ssh/known_hosts}"
+    export SADR_QUAL_MAX_DURATION="$BASELINE_TIMEOUT"
+    export SADR_QUAL_ADAPTER_PATH="$ADAPTER"
+    export SADR_QUAL_ADAPTER_SHA256="$ADAPTER_SHA"
+    rm -f "$ADAPTER_RESULT" "$ADAPTER_STAGES" "$ADAPTER_SUMMARY"
+    set +e
+    timeout "$BASELINE_TIMEOUT" bash "$ADAPTER" --baseline >"$OUT/baseline.stdout" 2>"$OUT/baseline.stderr"
+    brc=$?
+    set -e
+    if [ "$brc" -eq 124 ]; then
+        record baseline "Execute Stage 0-2 A1 baseline" fail "adapter timed out after ${BASELINE_TIMEOUT}s; see baseline.stderr" "adapter --baseline"
+    else
+        record_adapter_result baseline baseline "Execute Stage 0-2 A1 baseline" || true
+    fi
+    verify_controller_cleanup || true
+    report execute
+    check_complete
+    exit 0
 fi
 
 # Everything below this line can contact the router.
@@ -193,8 +382,16 @@ if [ "$PROFILE" != "observe" ]; then
     NOT_AFTER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["not_after"])' <<<"$auth_json")
     AUTH_FP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["device_fingerprint"])' <<<"$auth_json")
     [ "$AUTH_FP" = "$DEVICE_FP" ] || { echo "FAIL: device fingerprint does not match the authorization" >&2; exit 2; }
+    AUTH_MANIFEST=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("execution_manifest_sha256",""))' <<<"$auth_json")
+    verify_manifest || { echo "FAIL: execution manifest verification failed; run qualification/finalize-candidate.sh" >&2; exit 2; }
+    if [ "$PROFILE" = "canary" ]; then
+        [ -n "$AUTH_MANIFEST" ] || { echo "FAIL: authorization is not bound to an execution manifest" >&2; exit 2; }
+        [ "$AUTH_MANIFEST" = "$MANIFEST_SHA" ] || { echo "FAIL: execution manifest hash mismatch" >&2; exit 2; }
+    fi
+    record execution-manifest "Verify the execution manifest" pass "manifest_sha256=$MANIFEST_SHA" "execution_manifest.py --verify"
     export SADR_QUAL_ROUTER="$ROUTER"
-export SADR_QUAL_OUT="$OUT"
+    export SADR_QUAL_OUT="$OUT"
+    export SADR_QUAL_DEVICE_ID="$DEVICE_ID"
     export SADR_QUAL_TEST_ID="$TEST_ID"
     export SADR_QUAL_MAX_DURATION="$MAXDUR"
     export SADR_QUAL_NOT_AFTER="$NOT_AFTER"
@@ -319,14 +516,15 @@ if [ "$PREFLIGHT" -eq 1 ]; then
         check_complete
         exit 1
     fi
+    rm -f "$ADAPTER_RESULT" "$ADAPTER_STAGES" "$ADAPTER_SUMMARY"
     set +e
-    pf_out=$(timeout "$MAXDUR" bash -c "bash '$SADR_QUAL_ADAPTER_PATH' --preflight" 2>"$OUT/preflight.stderr")
+    timeout "$MAXDUR" bash "$SADR_QUAL_ADAPTER_PATH" --preflight >"$OUT/preflight.stdout" 2>"$OUT/preflight.stderr"
     pf_rc=$?
     set -e
-    if [ "$pf_rc" -eq 0 ] && printf '%s' "$pf_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True' >/dev/null 2>&1; then
-        record preflight "Adapter preflight" pass "read-only adapter preflight passed" "SADR_QUAL_ADAPTER_PATH --preflight"
+    if [ "$pf_rc" -eq 124 ]; then
+        record adapter-preflight "Adapter read-only preflight" fail "adapter preflight timed out after ${MAXDUR}s; see preflight.stderr" "adapter-result.json"
     else
-        record preflight "Adapter preflight" fail "adapter preflight failed rc=$pf_rc: $(printf '%s' "$pf_out" | tail -c 300)" "SADR_QUAL_ADAPTER_PATH --preflight"
+        record_adapter_result preflight adapter-preflight "Adapter read-only preflight" || true
     fi
     report execute
     check_complete
@@ -343,21 +541,39 @@ fi
 [ -n "${SADR_QUAL_VERIFY_CMD:-}" ] || { record cleanup "Delete exact test objects" blocked "missing SADR_QUAL_VERIFY_CMD (cleanup verification)" ""; report execute; exit 1; }
 export SADR_QUAL_CONFIG_FILE="$CONFIG"
 MUTATION_STARTED=1
-set +e
-out=$(timeout "$MAXDUR" bash -c "${!var}" 2>&1)
-rc=$?
-set -e
-detail=$(printf '%s\n' "$out" | tail -c 600)
-if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | python3 -c '
+RESULT_FILE_MODE=0
+case "$(basename "$ADAPTER")" in r1-canary.sh) RESULT_FILE_MODE=1 ;; esac
+if [ "${SADR_QUAL_REQUIRE_RESULT_FILE:-0}" = "1" ]; then
+    RESULT_FILE_MODE=1
+fi
+if [ "$RESULT_FILE_MODE" -eq 1 ]; then
+    rm -f "$ADAPTER_RESULT" "$ADAPTER_STAGES" "$ADAPTER_SUMMARY"
+    set +e
+    timeout "$MAXDUR" bash -c "${!var}" >"$OUT/$id.stdout" 2>"$OUT/$id.stderr"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 124 ]; then
+        record "$id" "Execute authorized test" fail "adapter timed out after ${MAXDUR}s; see $OUT/$id.stderr" "adapter-result.json"
+    else
+        record_adapter_result execute "$id" "Execute authorized test" || true
+    fi
+else
+    set +e
+    out=$(timeout "$MAXDUR" bash -c "${!var}" 2>&1)
+    rc=$?
+    set -e
+    detail=$(printf '%s\n' "$out" | tail -c 600)
+    if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
 assert d.get("ok") is True
 assert isinstance(d.get("probes"),int) and d["probes"] > 0
 assert d.get("wrong_provider") == 0
 ' >/dev/null 2>&1; then
-    record "$id" "Execute authorized test" pass "$detail" "$var"
-else
-    record "$id" "Execute authorized test" fail "rc=$rc or invalid evidence: $detail" "$var"
+        record "$id" "Execute authorized test" pass "$detail" "$var"
+    else
+        record "$id" "Execute authorized test" fail "rc=$rc or invalid evidence: $detail" "$var"
+    fi
 fi
 set +e
 run_cleanup >"$OUT/cleanup.log" 2>&1
@@ -375,6 +591,9 @@ elif [ "$crc" -eq 0 ]; then
     record cleanup "Delete exact test objects" fail "cleanup verification failed (recovery failure); see $OUT/cleanup.verify.log" "SADR_QUAL_VERIFY_CMD"
 else
     record cleanup "Delete exact test objects" fail "cleanup rc=$crc (recovery failure)" "SADR_QUAL_CLEANUP_CMD"
+fi
+if [ "$RESULT_FILE_MODE" -eq 1 ]; then
+    verify_controller_cleanup || true
 fi
 report execute
 check_complete

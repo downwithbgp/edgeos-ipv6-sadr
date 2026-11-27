@@ -22,8 +22,9 @@ hardware-qualified product.
 | CI on the Phase IV head | PASS | `5da9759`: push run 46020441263 and PR run 46020448297, all jobs success on `checkout@v7.0.1` |
 | Phase V-A CI | PASS | `e5ff8fb`: push run 46028355899 and PR run 46028363022, all jobs success; R1 simulation in the netns job |
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
-| Production canary R1 (off-device readiness) | PASS | adapter/cleanup bound by SHA-256 (candidate hashes tested); qualification 42 + 19 assertions; install/cleanup lock and closed-state tests; generic-Linux A/B/A 8/8; netns 145/0 |
-| Production canary R1 (target execution) | ABORTED (harness, pre-rule) | real-target preflight **PASS 4/4**; mutating attempt stopped before phase A1; no rule/timer/runtime dir/namespace; protected state unchanged; authorization consumed; retry requires a new authorization |
+| Production canary R1 (off-device readiness) | PASS | execution manifest binds 11 files; adapter/cleanup candidate hashes tested; qualification profile gates, cleanup 19/19, identity 14/14, manifest 4/4; install/cleanup lock and closed-state tests; generic-Linux A/B/A 10/10; netns 145/0 |
+| Production canary R1 (A1 baseline, target) | BLOCKED (production IPv6 firewall) | Stage 0/1 pass; A1 0/20 matching + 0/10 control; ER-X `SERVERv6_IN-30` drop counter +30; E1 probes reached the router MAC; E2 received 0; no mutation boundary, rule, timer or runtime dir; protected state and table 41913 unchanged |
+| Production canary R1 (target execution) | NOT RUN | A1 did not pass; the conditionally renewed mutating authorization is not consumed and no R1 B/A2 was attempted |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
 | Configuration transaction/rollback | BLOCKED | target engine behavior unverified; simulation only |
 | Boot ordering/failure propagation | BLOCKED | no target boot trace; guard failure does not block router by design |

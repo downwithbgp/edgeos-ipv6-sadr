@@ -36,6 +36,21 @@ ip netns exec r1rt ip link set r0 up
 ip netns exec r1rt ip link set r1 up
 ip netns exec r1dst ip link set d0 up
 ip netns exec r1rt sysctl -qw net.ipv6.conf.all.forwarding=1
+# Regression for the Phase V-C abort: IPv6 has no send_redirects sysctl. The
+# controller helper must use only existing keys and remain successful under
+# set -e.
+if ip netns exec r1src env SADR_ROOT="$ROOT" bash -c \
+    ". \"\$SADR_ROOT/qualification/lib/controller.sh\"; sadr_controller_disable_redirects s0"; then
+    ok "controller redirect setup uses only existing IPv6 sysctls"
+else
+    bad "controller redirect setup failed"
+fi
+value=$(ip netns exec r1src cat /proc/sys/net/ipv6/conf/s0/accept_redirects)
+if [ "$value" = "0" ]; then
+    ok "controller redirect setup disables accept_redirects"
+else
+    bad "controller accept_redirects=$value"
+fi
 ip netns exec r1src ip -6 addr add "$SEL/128" dev s0 nodad
 ip netns exec r1src ip -6 addr add 2001:db8:1::a3/64 dev s0 nodad
 ip netns exec r1rt ip -6 addr add 2001:db8:1::1/64 dev r0 nodad

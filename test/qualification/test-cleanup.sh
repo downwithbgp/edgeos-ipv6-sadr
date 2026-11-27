@@ -107,6 +107,7 @@ adapter_sha=$(sha256sum "$adapter" | awk '{print $1}')
 cleanup_sha=$(sha256sum "$cleanup" | awk '{print $1}')
 run_adapter_reject() { # adapter-sha cleanup-path cleanup-sha
     SADR_QUAL_ROUTER=admin@router.invalid SADR_QUAL_TEST_ID=R1-guard-only \
+    SADR_QUAL_APPROVED_SCOPE='one exact terminal rule: from fd42:901::a1/128 unreachable pref 21031' \
     SADR_QUAL_NOT_AFTER=2099-01-01T00:00:00Z SADR_QUAL_MAX_DURATION=120 \
     SADR_QUAL_DEVICE_FINGERPRINT="$(printf x | sha256sum | awk '{print $1}')" \
     SADR_QUAL_ADAPTER_SHA256="$1" SADR_QUAL_CLEANUP_PATH="$2" \
@@ -133,10 +134,14 @@ cand_cleanup=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["
 install="$ROOT/qualification/adapters/r1-install.sh"
 install_sha=$(sha256sum "$install" | awk '{print $1}')
 cand_install=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["install_sha256"])' "$candidate")
-if [ "$cand_adapter" = "$adapter_sha" ] && [ "$cand_cleanup" = "$cleanup_sha" ] && [ "$cand_install" = "$install_sha" ]; then
-    echo "PASS: authorization candidate hashes match the executable files"; pass=$((pass + 1))
+manifest="$ROOT/docs/r1-execution-manifest.json"
+cand_manifest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["execution_manifest_sha256"])' "$candidate")
+manifest_sha=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["manifest_sha256"])' "$manifest")
+if [ "$cand_adapter" = "$adapter_sha" ] && [ "$cand_cleanup" = "$cleanup_sha" ] && \
+    [ "$cand_install" = "$install_sha" ] && [ "$cand_manifest" = "$manifest_sha" ]; then
+    echo "PASS: authorization candidate is bound to the executable files and manifest"; pass=$((pass + 1))
 else
-    echo "FAIL: authorization candidate hashes drifted from the executable files" >&2
+    echo "FAIL: authorization candidate hashes or manifest binding drifted" >&2
     fail=$((fail + 1))
 fi
 

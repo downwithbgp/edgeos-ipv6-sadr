@@ -9,12 +9,18 @@ authorization file.
 
 - Default profile is `plan`: no SSH contact, no package install, no configuration commit.
 - `--execute` always requires `--authorize`.
+- `--baseline` (with `--profile canary`) runs the actual Stage 0–2 R1 implementation without an
+  authorization file or target mutation: controller namespaces/macvlans, read-only target
+  preflight and the bounded A1 probes only. It verifies the execution manifest and cleans
+  controller resources.
 - `observe` is read-only and needs no authorization file.
 - `canary` and `maintenance` require `--test-id`, `--device-fingerprint`, `--adapter` and
   `--cleanup`, plus an authorization JSON whose `test_ids` contains that id and whose
   `device_fingerprint`, `adapter_sha256` and `cleanup_sha256` match the supplied files. The validated
   duration, scope, recovery, deadline and hashes are exported to the adapter, never re-read from
-  disk. Expiry is checked before mutation and must cover the whole run.
+  disk. Expiry is checked before mutation and must cover the whole run. Canary authorization also
+  requires `execution_manifest_sha256`, matching `docs/r1-execution-manifest.json`; the profile
+  verifies every manifested file before execution.
 - Canary/maintenance runs also require `SADR_QUAL_VERIFY_CMD`; a failed cleanup verification is a
   recovery failure, never a pass. The approval record is an explicit maintainer-approved
   authorization document; no cryptographic signing identity is implied or invented.
@@ -48,6 +54,9 @@ authorization file.
 | `maintenance` | Explicitly authorized disruptive test; no automatic reboot | authorization file + bound adapter/cleanup |
 | `isolated` | Original full 22-step dedicated-hardware qualification | full isolated matrix |
 
+`canary --baseline` is the non-mutating Stage 0–2 A1 mode used before R1. It has no authorization
+file and never deploys device files, arms a timer or changes the target RPDB.
+
 Canary and maintenance require `--test-id` plus `--authorization` JSON with exact `device_id`,
 `device_fingerprint`, `profile`, `target_class: production`, `test_ids` (including the requested test
 id), `max_duration_seconds`, `approved_mutation_scope`, `recovery`, an unexpired `not_after`,
@@ -77,6 +86,13 @@ qualification/profile.sh --profile canary --execute --authorize \
 ```
 
 ```bash
+# Non-mutating Stage 0-2 A1 baseline through the real R1 implementation.
+sudo -E SADR_QUAL_SSH_KEY=<key> qualification/profile.sh --profile canary --baseline \
+  --router <user>@<router> --device-id 'Ubiquiti EdgeRouter' --device-fingerprint <64-hex> \
+  --adapter qualification/adapters/r1-canary.sh --out "$TMPDIR/a1-baseline"
+```
+
+```bash
 # Plan only; no router is contacted.
 qualification/run.sh --plan --out "$TMPDIR/qualification-plan" \
   --router admin@isolated-router --artifact /path/edgeos-ipv6-sadr_0.1.0_all.deb \
@@ -102,10 +118,14 @@ environment commands.
 
 ## Outputs
 
-- `results.json` — machine-readable steps, statuses, details and summary counts.
+- `results.json` — machine-readable harness steps, statuses, details and summary counts.
 - `results.md` — human-readable report with a status table and evidence caveats.
-- `config.boot.before`, `rules.before`, `routes.before`, `packages.before`, `install.log` — raw
-  evidence, retained with the run.
+- `adapter-result.json` — authoritative adapter stage/probe/cleanup result for the R1 path.
+- `adapter-stages.tsv`, `stages.jsonl`, `diagnostics.jsonl`, `adapter.log` — stage and diagnostic records.
+- `baseline.stdout`, `baseline.stderr`, `ssh.stderr.log`, `subprocess.log` — separate subprocess logs.
+- `e1.pcap`, `e2.pcap`, `icmp.pcap`, `listener.log` — packet evidence, retained with the run.
+- `mutation-boundary.json` — written after A1 and immediately before device runtime deployment.
+- `config.boot.before`, `rules.before`, `routes.before`, `packages.before` — read-only snapshots.
 
 Statuses are `pass`, `fail`, `blocked` and `planned`. `complete` is true only when every step passed.
 A run with any `fail` or `blocked` step exits non-zero.
@@ -140,8 +160,10 @@ Set these environment commands before `--execute`. Each command must print one J
 | `SADR_QUAL_VERIFY_CMD` | Mandatory for canary/maintenance: verify the cleanup left no residue |
 
 The adapter commands run on the controller. They may use `ssh`/`scp`/captures, but must return the
-JSON contract above. This keeps SADR-specific topology out of the controller while preserving
-repeatable evidence collection.
+JSON contract above. The R1 adapter (`r1-canary.sh`) is the exception: it writes
+`adapter-result.json` and the harness treats that file as authoritative; its stdout is diagnostic
+only. This keeps SADR-specific topology out of the controller while preserving repeatable evidence
+collection.
 
 ## Validation
 
@@ -151,5 +173,8 @@ drives every profile plan, the authorization validator (deadline, device/profile
 duration bounds, fingerprint and dependency hashes), the execution gates, cleanup verification,
 cleanup on failure and interrupt, and the non-zero exit for a failed observe collection.
 `test/qualification/test-cleanup.sh` tests the device cleanup script against a fake `ip` and the
-adapter plan/refusal paths. `test/integration/r1-canary-sim.sh` runs the A/B/A sequence and cleanup
-semantics in the privileged generic-Linux container. All are part of the qualification checks.
+adapter plan/refusal paths (cleanup 19/19). `test/qualification/test-identity.sh` covers the framed
+identity parser (14/14); `test/qualification/test-manifest.sh` covers manifest generation, tamper
+rejection and candidate binding (4/4). `test/integration/r1-canary-sim.sh` runs the A/B/A sequence,
+the controller redirect-sysctl regression and cleanup semantics in the privileged generic-Linux
+container (10/0, netns 145/0). All are part of the qualification checks.

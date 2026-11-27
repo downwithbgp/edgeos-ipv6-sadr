@@ -52,6 +52,7 @@ test-qualification:
 	bash test/qualification/test-profiles.sh
 	bash test/qualification/test-cleanup.sh
 	bash test/qualification/test-identity.sh
+	bash test/qualification/test-manifest.sh
 
 # Privileged container; generic Linux evidence only, not EdgeOS evidence.
 test-netns:

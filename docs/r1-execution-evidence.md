@@ -1,59 +1,131 @@
-# R1 execution evidence (Phase V-B continuation)
+# R1 execution evidence (Phase V-B / V-C)
 
-**Result: R1 NOT RUN (ABORTED in the harness before the rule).** No production rule persisted; no
-timer, runtime directory or namespace remained. Table `41913` and rules `10410–10414` are unchanged.
-Raw captures and the run directory stay outside the repository.
+**SADR product status: R1 NOT RUN. Phase V-C A1 baseline: FAILED at the production IPv6 firewall;
+no production mutation was attempted.** No RPDB rule, device timer, runtime directory, package,
+configuration change or controller namespace remains. Table `41913` and rules `10410–10414` are
+unchanged. Raw captures and run directories remain outside the repository.
 
-## 1. Real-target read-only preflight — PASS
+## 1. Phase V-B abort — root cause
 
-- Run directory outside the repository; UTC window `2026-11-27T17:19:50Z` onward.
-- Result: 4/4 steps pass:
-  - framed identity: `EdgeRouter.ER-e50.v3.0.1.5862409.250924.1407`, kernel `4.14.54-UBNT`,
-    fingerprint `0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440`;
-  - operator management attestation;
-  - read-only backups;
-  - adapter read-only preflight (RPDB, protected state, cleanup mechanism, containment).
-- No rule, timer, runtime directory, namespace or device executable was created by the preflight.
+The previous mutating attempt aborted in Stage 0 controller preparation, before any target
+deployment:
 
-## 2. Mutating attempt — ABORTED before the rule
+- **Failing command:** `ip netns exec <ns> sysctl -qw net.ipv6.conf.<if>.accept_redirects=0
+  net.ipv6.conf.<if>.send_redirects=0`.
+- **Exit status:** `sysctl` returned **1**; `set -euo pipefail` terminated the adapter with status 1.
+  Linux exposes no IPv6 `send_redirects` sysctl; the key is absent under
+  `/proc/sys/net/ipv6/conf/<if>/`. Reproduced in a disposable controller namespace: the two-key
+  `sysctl` set `accept_redirects` and then failed on `send_redirects`.
+- **Stage and privilege:** controller-local topology, after namespace/macvlan creation and before the
+  device runtime directory, timer or rule. It ran as root/CAP_NET_ADMIN on the controller under the
+  existing `sudo -E` mechanism; no target privilege or mutation was involved.
+- **Result contamination:** the EdgeOS login banner was SSH **stderr**. `profile.sh` captured the
+  adapter with `2>&1` and then parsed stdout; the banner was therefore included in the failure
+  detail. The banner was not the abort cause.
+- **Coverage gap:** the generic-Linux R1 simulation built its own topology and never executed Stage 0;
+  `--preflight` stopped before namespace creation. No test exercised the redirect sysctl or asserted
+  that adapter results arrive through a dedicated file.
+- **Latent topology defect:** Stage 0 assigned the control source as `C/64`, which made the
+  destination `D` on-link in the sender namespace and would bypass the ER-X at Layer 2. The
+  correction uses `C/128` and an explicit `D/128` route via the router link-local.
 
-- Authorization window: short-lived, created at execution initiation; approval reference recorded.
-- Adapter preflight logged `17:20:38Z` identity, `17:20:39Z` RPDB, `17:20:46Z` cleanup mechanism and
-  containment. The log stops there; phase A1 was never reached.
-- The harness recorded the canary step `fail`; its captured output contained the EdgeOS login banner
-  ahead of any JSON. The harness cleanup and cleanup verification passed.
-- State verified after the attempt (read-only): `21031` rules = 0; protected rules = 5; table `41913`
-  routes = 2; cleanup timer = not-found; `/run/sadr-r1-*` = none; local test namespaces = none;
-  no host test links.
-- Classification: **harness/adapter failure, not SADR product behavior.** The exact uncaught step
-  between the containment check and phase A1 is not yet identified; the banner in the harness output
-  shows an SSH stdout leak, and the adapter has no ERR trap. No RPDB rule was installed.
+## 2. Phase V-C corrections
 
-## 3. Authorization boundary
+- **Stage split:** the adapter now runs controller privilege validation, Stage 0 (namespaces,
+  uniquely tagged macvlans, synthetic addresses, C/128 + D/128 via router, generators, captures),
+  Stage 1 (read-only identity/RPDB/containment/invariant preflight) and Stage 2 (A1), then the
+  mutation stages only for `--execute`. `--baseline` runs the actual Stage 0–2 implementation used
+  by R1 and never deploys device files, arms a timer or changes the target RPDB.
+- **Structured results:** the adapter writes `adapter-result.json` atomically (schema 2) with UTC
+  stage records, failure class/stage/command/exit/source, probes, boundary timestamp, resources and
+  cleanup outcome. The harness reads that file; stdout is not authoritative. SSH uses `-q` and
+  separate stderr/subprocess logs; the identity helper keeps banner text out of the framed response.
+- **Instrumentation:** explicit stage enter/complete records, an ERR trap for uncaught commands,
+  explicit failure classification, and a final cleanup audit. No unrestricted shell tracing.
+- **Manifest:** `docs/r1-execution-manifest.json` binds the 11 execution-critical files; its
+  `manifest_sha256` is generated and bound in the authorization candidate. The profile verifies the
+  manifest before the canary path; the finalizer derives adapter/cleanup/install hashes from it.
+- **Diagnostics/invariants:** the BGP parser now uses the summary totals (neighbours/established);
+  the preflight and post-A1 checks compare protected rules, table `41913`, default routes, BGP and
+  available memory.
 
-The mutating run crossed the conditional execution boundary (it began the harness's mutating path);
-the authorization is therefore consumed. No automatic mutating retry was attempted.
+Manifest: `c94ddf2a493bea562d9a1d8b76a52c3bf7ccbf96b8a7c22f7f9a5a7118db2c7a`.
+Frozen device executables: adapter `7644a897e0ce329f5f44235cad05012ff50294be3de2705003c30a4bab9fbbf6`,
+cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
+install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.
 
-## 4. Corrected harness committed with this evidence
+## 3. Real-target read-only preflight — PASS
 
-- Shared framed identity acquisition/parsing (banner-tolerant, exactly one frame, field/duplicate/
-  truncation/transport checks) used by `profile.sh`, `r1-canary.sh` and `run.sh`.
-- `--preflight` mode in the profile and adapter that exercises the real identity, authorization,
-  artifact, privilege and baseline path and stops before namespaces, timer, deployment or mutation.
-- Operator key and known_hosts bound for root-context SSH.
-- Deterministic candidate finalization (`qualification/finalize-candidate.sh`) and candidate-hash
-  validation in the qualification tests.
-- Frozen device executables: adapter `cf82ad4c439c6e22069c1977858b896b5f3e4684fbef2c883c15d613e337f084`,
-  cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
-  install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.
+The refactored profile/preflight path passed 7/7 at the real ER-X: manifest, framed identity,
+management attestation, read-only backups, adapter preflight, Stage 1 and cleanup audit. No
+mutation, timer, runtime directory or namespace was created.
 
-## 5. Required before another mutating attempt
+## 4. Official A1 baseline (Stage 0–2) — EXECUTED, BLOCKED BY THE PRODUCTION FIREWALL
 
-1. Redirect every SSH/`rsudo` stdout in the adapter (only the final JSON on stdout) and add an
-   ERR/xtrace log so an uncaught command is attributable.
-2. Move privileged runtime deployment after A1, so a baseline/topology failure is PRECHECK_FAILED
-   rather than an aborted mutating run.
-3. Bind the shared identity library hash in the authorization candidate (dependency binding).
-4. Rerun the targeted gates and the real-target preflight; then request a new mutating authorization.
+Run outside the repository; UTC window `2026-11-27T18:23:02Z` to `18:23:50Z`.
 
-R1 remains NOT RUN for SADR product behavior; no R2 work is authorized.
+| Stage | Result | Observation |
+|---|---|---|
+| privilege | pass | root, netns/macvlan/capture tools available |
+| stage0 | pass | unique namespaces/macvlans; selector; C/128; D/128 via router; generators/captures |
+| stage1 | pass | identity/fingerprint; protected rules 5; table `41913` 2 routes; BGP 2/1; containment |
+| stage2 (A1) | **fail** | matching 0/20, control 0/10 delivered; adapter stops before forwarding/invariant assertions |
+| cleanup | pass | controller namespaces absent; no listener/capture residue |
+
+Packet-path observations from the retained captures:
+
+- E1 emitted the 20 matching + 10 control UDP probes toward `<D>`; the capture contains 32 frames
+  (30 UDP plus two ICMPv6 neighbour messages). Every UDP probe used the ER-X's Ethernet MAC as the
+  next hop and hop limit 64; no direct E1→E2 MAC frame was observed.
+- E2 received **0** frames and the destination listener logged **0** sources.
+- The matching/control probes reached the ER-X ingress but were not forwarded.
+
+Firewall evidence (read-only):
+
+- Hook mapping: ingress `switch0.65` → `SERVERv6_IN`.
+- Rule `SERVERv6_IN-30` drops destination addresses in the `IPV6_LOCAL_NETS` set. The test
+  destination is in the server-VLAN `/64`, so it is in that set.
+- Exact counter: **77 → 107 packets (+30)** across the final A1 run (the first official A1 moved
+  47 → 77; the earlier 1-matching/1-control diagnostic moved the same counter 45 → 47). The drop is
+  therefore the production IPv6 firewall, not an ND, capture or harness failure.
+
+The adapter's automated invariant check ran before the delivery assertion and passed (diagnostics:
+`A1 invariants pass: protected rules, table 41913, BGP, default routes and memory unchanged`).
+The read-only post-run check confirms: `21031` rules **0**; protected rules **5**; table `41913`
+routes **2**; BGP neighbours/established **2/1**; timer **not-found**; runtime directories **0**;
+host test namespaces **none**.
+
+Classification: **target-platform firewall policy, not SADR product behavior.** The harness and
+adapter executed Stage 0–2 as designed; the A1 success criterion was not met because production
+forwarding policy drops the synthetic destination.
+
+## 5. Authorization and mutation boundary
+
+Phase V-C did not create a fresh mutating authorization and did not cross the production mutation
+boundary: the A1 result records `mutation_boundary_crossed=false`, no device runtime directory,
+timer or rule was created, and no B/A2 phase was reached. The Phase V-B mutating authorization was
+consumed by that abort (the harness had begun the mutating path); no automatic mutating retry was
+made. The conditionally renewed R1 authorization is **not consumed** by this A1 failure.
+
+## 6. Smallest necessary change
+
+The existing server-VLAN hairpin topology cannot satisfy A1 without a production firewall change.
+The smallest proposed change is a temporary, exact IPv6 firewall exception on `switch0.65` for the
+synthetic test tuple only (selector/control source to the test destination, UDP/54321), scoped to
+the test window and automatically removed with the rule cleanup. An approved alternative endpoint
+or an existing permitted test path would avoid the firewall change. Both require explicit
+maintainer authorization; the production firewall was not modified.
+
+## 7. Gates and artifacts
+
+- `make lint`: pass.
+- Unit: 619/619 pass.
+- Qualification: profile/authorization gates pass (including the baseline stdout-vs-result-file
+  test); cleanup 19/19; identity 14/14; manifest 4/4.
+- Privileged generic-Linux netns: 145/0; R1 simulation 10/0, including the controller redirect-sysctl
+  regression.
+- Raw captures, run directories and authorization documents remain outside the repository.
+- CI results for the corrective commit are recorded after the push.
+
+R1 remains NOT RUN for SADR product behavior; R2, package installation, production migration,
+firewall changes and persistent configuration changes remain unauthorized.
