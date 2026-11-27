@@ -1,0 +1,244 @@
+#!/usr/bin/perl
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Operational CLI for the IPv6 SADR reconciler. Commands that mutate kernel
+# state run under the state lock; status commands are read-only.
+
+use strict;
+use warnings;
+use FindBin;
+use lib '/usr/share/perl5';
+use lib "$FindBin::Bin/lib";
+
+use Getopt::Long qw(GetOptions);
+use JSON::PP;
+use EdgeOS::IPv6SADR;
+use EdgeOS::IPv6SADR::Reconcile;
+use EdgeOS::IPv6SADR::Health;
+use EdgeOS::IPv6SADR::BootGuard;
+use EdgeOS::IPv6SADR::Monitor;
+
+sub usage {
+    my ($rc) = @_;
+    my $out = $rc ? \*STDERR : \*STDOUT;
+    print {$out} <<'USAGE';
+usage: vyatta-ipv6-sadr <command> [options]
+
+commands:
+  validate-working            validate the working (commit) configuration
+  reconcile-working           apply and verify the working configuration
+  monitor                     reconcile from active configuration on events
+  boot-guard                  install early boot terminal guards
+  status | health             report operational health
+  policy                      list policies and per-policy health
+  route --source S --destination D
+                              show the route selected for a source
+
+options:
+  --json                      machine-readable output where supported
+  --dry-run                   print the plan without mutating state
+  --mode active|working       configuration source for status (default active)
+  --config PATH               config.boot path for boot-guard
+  --resync SECONDS            monitor full-resync interval (default 300)
+  --debounce SECONDS          monitor event coalescing delay (default 0.4)
+USAGE
+    exit $rc;
+}
+
+sub json_out {
+    my ($data) = @_;
+    print JSON::PP->new->canonical->pretty->encode($data);
+}
+
+sub print_health {
+    my ($h, $json) = @_;
+    if ($json) {
+        json_out($h);
+        return;
+    }
+    print "state: $h->{state}\n";
+    print "generation: " . ($h->{generation} // '') . "\n";
+    print "intent: " . ($h->{intent} // '') . "\n";
+    print "realization: " . ($h->{realization} // '') . "\n";
+    print "effectiveness: " . ($h->{effectiveness} // '') . "\n";
+    print "reachability: " . ($h->{reachability} // 'unverified') . "\n";
+    print "error: $h->{error}\n" if $h->{error};
+    print "last-failed: $h->{last_failed}\n" if $h->{last_failed};
+    my @p = @{ $h->{policies} // [] };
+    if (@p) {
+        print "policies:\n";
+        for my $p (@p) {
+            my $src = join(',', @{ $p->{source_prefixes} // [] });
+            print "  $p->{name} table $p->{table} state=$p->{state} sources=$src\n";
+            print "    $_\n" for @{ $p->{reasons} // [] };
+        }
+    } else {
+        print "policies: none\n";
+    }
+    my $c = $h->{checks} // {};
+    my @tg = @{ $c->{terminal_guards} // [] };
+    if (@tg) {
+        my $present = grep { $_->{present} } @tg;
+        print "terminal-guards: $present/" . scalar(@tg) . " present\n";
+    }
+    print "conflicts: " . scalar(@{ $c->{conflicts} // [] }) . "\n"
+        if @{ $c->{conflicts} // [] };
+    print "dependencies: " . scalar(@{ $c->{dependencies} // [] }) . "\n"
+        if @{ $c->{dependencies} // [] };
+    print "shadowed-rules: " . scalar(@{ $c->{shadowed} // [] }) . "\n"
+        if @{ $c->{shadowed} // [] };
+    print "orphaned-guards: " . scalar(@{ $c->{orphaned_guards} // [] }) . "\n"
+        if @{ $c->{orphaned_guards} // [] };
+}
+
+my %opt;
+GetOptions(\%opt,
+    'json', 'dry-run', 'source=s', 'destination=s',
+    'mode=s', 'config=s', 'resync=i', 'debounce=f',
+) or usage(2);
+
+my $command = shift @ARGV // 'status';
+usage(2) if @ARGV;
+
+my $sadr = EdgeOS::IPv6SADR->new(dry_run => $opt{'dry-run'} ? 1 : 0);
+my $mode = $opt{mode} // 'active';
+
+if ($command eq 'version') {
+    print "vyatta-ipv6-sadr $EdgeOS::IPv6SADR::VERSION\n";
+    exit 0;
+}
+
+if ($command eq 'validate-working') {
+    my $ok = eval { $sadr->read_desired('working'); 1 };
+    if (!$ok) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "invalid working configuration: $err\n";
+        exit 1;
+    }
+    print "working configuration valid\n";
+    exit 0;
+}
+
+if ($command eq 'reconcile-working') {
+    my $ok = eval { $sadr->reconcile('working'); 1 };
+    if (!$ok) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "reconciliation failed: $err\n";
+        exit 7;
+    }
+    print "reconciliation effective\n" unless $opt{json};
+    exit 0;
+}
+
+if ($command eq 'monitor') {
+    my $ok = eval {
+        $sadr->monitor(
+            resync   => $opt{resync}   // 300,
+            debounce => $opt{debounce} // 0.4,
+        );
+        1;
+    };
+    if (!$ok) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "monitor failed: $err\n";
+        exit 7;
+    }
+    exit 0;
+}
+
+if ($command eq 'boot-guard') {
+    my $ok = eval {
+        $sadr->boot_guard(config => $opt{config} // '/config/config.boot');
+        1;
+    };
+    if (!$ok) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "boot guard failed: $err\n";
+        exit 7;
+    }
+    print "boot guards effective\n" unless $opt{json};
+    exit 0;
+}
+
+if ($command eq 'status' || $command eq 'health') {
+    my $health = $sadr->current_health(mode => $mode);
+    print_health($health, $opt{json});
+    exit $sadr->health_exit_code($health->{state});
+}
+
+if ($command eq 'policy') {
+    my $health = $sadr->current_health(mode => $mode);
+    if ($opt{json}) {
+        json_out({
+            state    => $health->{state},
+            policies => $health->{policies} // [],
+            checks   => $health->{checks} // {},
+        });
+    } elsif (!@{ $health->{policies} // [] }) {
+        print "no policies configured\n";
+    } else {
+        for my $p (@{ $health->{policies} }) {
+            my $src = join(',', @{ $p->{source_prefixes} // [] });
+            print "$p->{name}\ttable=$p->{table}\tstate=$p->{state}\tsources=$src\n";
+        }
+    }
+    exit $sadr->health_exit_code($health->{state});
+}
+
+if ($command eq 'route') {
+    my $src = $opt{source} // '';
+    my $dst = $opt{destination} // '';
+    if (!length $src || !length $dst) {
+        print STDERR "route requires --source and --destination\n";
+        exit 2;
+    }
+    my $addr = eval { $sadr->parse_addr($src) };
+    if (!$addr) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "invalid source address: $err\n";
+        exit 2;
+    }
+    my $desired = eval { $sadr->read_desired($mode) };
+    if (!$desired) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "cannot read configuration: $err\n";
+        exit 3;
+    }
+    my ($match, $plen) = (undef, -1);
+    for my $p (@{ $desired->{policies} }) {
+        for my $s (@{ $p->{source_prefixes} }) {
+            my $prefix = $sadr->parse_prefix($s);
+            next unless $sadr->prefix_contains_addr($prefix, $addr);
+            next unless $prefix->{len} > $plen;
+            ($match, $plen) = ($p, $prefix->{len});
+        }
+    }
+    my $lookup = $sadr->route_lookup($src, $dst);
+    $lookup->{policy} = $match ? $match->{name} : undef;
+    $lookup->{table} = $match ? $match->{table} : $lookup->{table};
+    if ($opt{json}) {
+        json_out($lookup);
+    } else {
+        if ($lookup->{reachable}) {
+            print "source $src -> $dst: reachable via "
+                . ($lookup->{via} // 'connected')
+                . ($lookup->{dev} ? " dev $lookup->{dev}" : '')
+                . " table " . ($lookup->{table} // 'main')
+                . ($match ? " policy $match->{name}" : " (no constrained policy)")
+                . "\n";
+        } else {
+            print "source $src -> $dst: unreachable"
+                . ($match ? " (policy $match->{name})" : '')
+                . " " . ($lookup->{error} // '') . "\n";
+        }
+    }
+    exit($lookup->{unreachable} ? 4 : 0);
+}
+
+usage(2);
