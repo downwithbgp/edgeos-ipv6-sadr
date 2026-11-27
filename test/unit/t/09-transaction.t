@@ -94,7 +94,7 @@ for (1 .. 2) {
 }
 for my $pid (@pids) {
     waitpid($pid, 0);
-    $child_rc |= ($? >> 8);
+    $child_rc |= (($? >> 8) | ($? & 127));
 }
 is($child_rc, 0, 'concurrent active reconciliations succeed under the lock');
 $state = read_json("$f->{dir}/state.json");

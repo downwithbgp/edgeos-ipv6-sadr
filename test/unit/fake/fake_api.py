@@ -11,10 +11,10 @@ import sys
 
 raw_verb = sys.argv[1] if len(sys.argv) > 1 else ""
 active_verb = raw_verb in ("listActiveNodes", "returnActiveValue", "existsActive")
-config_path = os.environ["FAKE_CONFIG"]
-if active_verb and os.environ.get("FAKE_ACTIVE_CONFIG"):
-    config_path = os.environ["FAKE_ACTIVE_CONFIG"]
 try:
+    config_path = os.environ["FAKE_CONFIG"]
+    if active_verb and os.environ.get("FAKE_ACTIVE_CONFIG"):
+        config_path = os.environ["FAKE_ACTIVE_CONFIG"]
     cfg = json.load(open(config_path))
 except (KeyError, OSError, ValueError) as exc:
     sys.stderr.write(f"fake_api: {exc}\n")

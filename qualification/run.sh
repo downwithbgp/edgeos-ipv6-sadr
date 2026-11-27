@@ -70,12 +70,12 @@ plan_step() { # id description command
     record "$1" "$2" "planned" "not executed in plan mode" "$3"
 }
 
-adapter_var() { # id description env-var
+adapter_var() { # id description env-var [require-positive-probes]
     if [ "$MODE" = "plan" ]; then
         plan_step "$1" "$2" "set \$$3 to the adapter command"
         return 0
     fi
-    local var=$3
+    local var=$3 require_packets=${4:-0}
     if [ -z "${!var:-}" ]; then
         record "$1" "$2" "blocked" "missing $var" ""
         return 0
@@ -88,11 +88,12 @@ adapter_var() { # id description env-var
     local detail
     detail=$(printf '%s\n' "$out" | tail -c 600)
     if [ "$rc" -ne 0 ]; then
-        record "$1" "$2" "fail" "adapter rc=$rc: $detail" "${!var}"
+        record "$1" "$2" "fail" "adapter rc=$rc: $detail" "$var"
         return 0
     fi
     if ! printf '%s\n' "$out" | python3 -c '
 import json,sys
+require=int(sys.argv[1])
 try:
     d=json.load(sys.stdin)
 except Exception:
@@ -105,11 +106,15 @@ if probes is not None and (not isinstance(probes,int) or probes < 0):
     raise SystemExit(4)
 if wrong is not None and wrong != 0:
     raise SystemExit(5)
-' >/dev/null 2>&1; then
-        record "$1" "$2" "fail" "adapter output invalid or not ok: $detail" "${!var}"
+if require and (not isinstance(probes,int) or probes <= 0):
+    raise SystemExit(6)
+if require and wrong != 0:
+    raise SystemExit(7)
+' "$require_packets" >/dev/null 2>&1; then
+        record "$1" "$2" "fail" "adapter output invalid or not ok: $detail" "$var"
         return 0
     fi
-    record "$1" "$2" "pass" "$detail" "${!var}"
+    record "$1" "$2" "pass" "$detail" "$var"
 }
 
 # Always record the complete matrix, including in plan mode.
@@ -138,6 +143,13 @@ plan_step bgp-internal "BGP internal-route mirroring, withdrawal and ECMP" "run 
 plan_step coexistence "Native firewall and edgeos-vxlan coexistence" "run SADR_QUAL_COEXIST_CMD"
 plan_step resources "CPU, memory, throughput, recovery latency and boot time" "run SADR_QUAL_RESOURCES_CMD"
 plan_step cleanup "Restore configuration/package state and verify no managed residue" "run SADR_QUAL_CLEANUP_CMD"
+
+report_and_exit() {
+    python3 "$ROOT/qualification/report.py" --mode execute --tsv "$TSV" --out "$OUT" \
+        --router "$ROUTER" --artifact "$ARTIFACT" --firmware "$FIRMWARE" || true
+    echo "qualification stopped before/at a required precondition; see $OUT/results.md" >&2
+    exit 1
+}
 
 # Step ids that the harness treats as required for a complete execution.
 REQUIRED="preflight independent-management backup artifact install configure structural packets flows transitions monitor rollback cold-boot upgrade remove-refusal offload-on offload-off source-selection bgp-internal coexistence resources cleanup"
@@ -174,12 +186,13 @@ if [ "$rc" -eq 0 ] \
     && printf '%s' "$version" | grep -Eq '^EdgeRouter\.ER-e50\.v3\.0\.1\.5862409\.' \
     && [ "$kernel" = "4.14.54-UBNT" ] \
     && { [ -z "$FIRMWARE" ] || [ "$version" = "$FIRMWARE" ]; } \
-    && { [ -z "$DEVICE_ID" ] || printf '%s' "$identity" | grep -q "$DEVICE_ID"; }; then
+    && { [ -z "$DEVICE_ID" ] || printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; }; then
     record preflight "Verify exact EdgeOS firmware, kernel and device identity" pass \
         "version=$version kernel=$kernel" "ssh identity"
 else
     record preflight "Verify exact EdgeOS firmware, kernel and device identity" fail \
         "unexpected: $identity" "ssh identity"
+    report_and_exit
 fi
 if [ "${SADR_QUAL_ISOLATED:-0}" = "1" ]; then
     record independent-management "Attest independent management connectivity" pass \
@@ -200,6 +213,7 @@ if {
 else
     record backup "Back up config.boot, rules, routes and package inventory" fail \
         "backup command failed" "ssh/scp snapshots"
+    report_and_exit
 fi
 
 hash=$(sha256sum "$ARTIFACT" | awk '{print $1}')
@@ -208,6 +222,7 @@ if [ "$hash" = "${SADR_QUAL_ARTIFACT_SHA256:-$hash}" ]; then
 else
     record artifact "Hash and inspect the .deb under test" fail \
         "sha256=$hash expected=$SADR_QUAL_ARTIFACT_SHA256" "sha256sum"
+    report_and_exit
 fi
 
 remote_deb="/tmp/$(basename "$ARTIFACT")"
@@ -217,13 +232,15 @@ if scp "${SSH_OPTS[@]}" "$ARTIFACT" "$ROUTER:$remote_deb" >/dev/null 2>&1 \
     record install "Install the package on the isolated router" pass "dpkg -i succeeded" "scp+dpkg"
 else
     record install "Install the package on the isolated router" fail "install failed" "scp+dpkg"
+    report_and_exit
 fi
 
+export SADR_QUAL_CONFIG_FILE="$CONFIG"
 adapter_var configure "Commit the isolated SADR policy" SADR_QUAL_CONFIGURE_CMD
 adapter_var structural "Verify intent, guards, rules, tables and health" SADR_QUAL_STRUCTURAL_CMD
-adapter_var packets "Continuous packet probes on all egresses; wrong-provider must be zero" SADR_QUAL_PACKETS_CMD
-adapter_var flows "Established TCP/UDP flows during policy changes" SADR_QUAL_FLOWS_CMD
-adapter_var transitions "Provider/internal/rule/table loss and repair" SADR_QUAL_TRANSITIONS_CMD
+adapter_var packets "Continuous packet probes on all egresses; wrong-provider must be zero" SADR_QUAL_PACKETS_CMD 1
+adapter_var flows "Established TCP/UDP flows during policy changes" SADR_QUAL_FLOWS_CMD 1
+adapter_var transitions "Provider/internal/rule/table loss and repair" SADR_QUAL_TRANSITIONS_CMD 1
 adapter_var monitor "Monitor interruption, restart and resynchronization" SADR_QUAL_MONITOR_CMD
 adapter_var rollback "Configuration commit failure, rollback and commit-confirm" SADR_QUAL_ROLLBACK_CMD
 adapter_var cold-boot "Cold boot/reboot and guard-before-forwarding verification" SADR_QUAL_BOOT_CMD

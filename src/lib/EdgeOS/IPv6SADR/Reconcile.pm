@@ -566,6 +566,8 @@ sub reconcile {
                 $health = { state => 'failed',
                             error => "post-apply health observation failed: $health_err" };
             }
+            die "post-apply health failed: " . ($health->{error} // 'unknown') . "\n"
+                if ($health->{state} // '') eq 'failed';
             $self->write_status({
                 state => $health->{state} // 'failed',
                 generation => $desired->{generation},

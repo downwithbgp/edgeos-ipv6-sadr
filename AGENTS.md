@@ -21,7 +21,7 @@ Current artifacts:
 * `docs/hardware-qualification-plan.md`, `docs/migration-plan.md` — design only; separate authorization.
 * `src/lib/EdgeOS/IPv6SADR*.pm`, `src/vyatta-ipv6-sadr` — production reconciler and CLI.
 * `templates/`, `systemd/`, `debian/` — native configuration/op integration, services and package.
-* `test/unit/` — 591 unit/property/failure assertions; `test/integration/` — 145-assertion namespace lab.
+* `test/unit/` — 619 unit/property/failure assertions; `test/integration/` — 145-assertion namespace lab.
 * `docs/requirements.md`, `docs/security-invariants.md`, `docs/operations.md`,
   `docs/testing-strategy.md`, `docs/platform-compatibility.md` — normative contracts and status.
 

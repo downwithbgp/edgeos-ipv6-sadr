@@ -81,3 +81,11 @@ no release/publish step.
 - The draft PR must not be merged.
 - Tagging, release publication and artifact signing remain prohibited until hardware qualification
   and separate authorization.
+
+## 8. Final review-fix build
+
+The post-review implementation adds the boot/transaction/perf/qualification work and the review
+fixes. Its local package hash is
+`f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f` (26,982 bytes, Installed-Size
+157 KiB), artifact 20/20 and lifecycle 13/13. The final GitHub Actions runs for this head are recorded
+after the final push; the earlier `160b493` runs above remain historical.

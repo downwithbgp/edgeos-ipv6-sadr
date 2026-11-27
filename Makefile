@@ -8,9 +8,9 @@ PYTHON_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -t
 
 .PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns test-package test-target-parity test-perf test-qualification clean
 
-test: lint test-unit
+test: lint test-unit test-qualification
 
-test-all: test test-netns
+test-all: test test-netns test-target-parity
 
 lint: lint-shell lint-perl lint-python shellcheck
 
@@ -42,7 +42,7 @@ test-package:
 	bash test/package/lifecycle.sh
 
 test-target-parity:
-	bash test/target/run-in-docker.sh
+	REQUIRE_TARGET_PARITY=1 bash test/target/run-in-docker.sh
 
 test-perf:
 	PERL5LIB=src/lib:test/unit/lib perl test/perf/profile.pl

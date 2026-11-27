@@ -91,19 +91,20 @@ run_expect "prerm allows upgrade with saved configuration" 0 \
 run_expect "postinst configure is safe without systemd" 0 \
     env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false "$POSTINST" configure
 
-mkdir -p "$TMP/state"
-printf 'state\n' >"$TMP/state/status.json"
+POSTRM_STATE=$(mktemp -d /tmp/sadr-postrm.XXXXXX)
+printf 'state\n' >"$POSTRM_STATE/status.json"
 run_expect "postrm refuses an unexpected state path" 1 \
     env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false \
     EDGEOS_IPV6_SADR_TEST_STATE_DIR=/etc "$POSTRM" purge
 run_expect "postrm purge removes runtime state" 0 \
     env EDGEOS_IPV6_SADR_TEST_SYSTEMCTL=/bin/false \
-    EDGEOS_IPV6_SADR_TEST_STATE_DIR="$TMP/state" "$POSTRM" purge
-if [ ! -e "$TMP/state" ]; then
+    EDGEOS_IPV6_SADR_TEST_STATE_DIR="$POSTRM_STATE" "$POSTRM" purge
+if [ ! -e "$POSTRM_STATE" ]; then
     ok "postrm purge leaves no runtime state directory"
 else
     bad "postrm purge left the runtime state directory"
 fi
+rm -rf "$POSTRM_STATE"
 
 echo
 if [ "$FAIL" -ne 0 ]; then
