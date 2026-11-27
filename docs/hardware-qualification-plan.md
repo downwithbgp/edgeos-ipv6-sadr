@@ -60,7 +60,7 @@ explicit authorization; the plan itself does not authorize router mutation.
 | H8 | Source selection | Forwarded, source-bound local and unbound router traffic; RFC 6724/8043/8028/8678 analysis | `ip route get`, captures, application tests | Separate cases reported; no automatic optimal-source claim |
 | H9 | Internal/BGP | Connected routes on internal interfaces; configured exceptions; withdrawal; dynamically learned internal routes; ECMP/ambiguous next hops; interface rename/recreate | routing tables, captures | Internal destinations do not fall to a provider; unknown interfaces are not trusted |
 | H10 | Interaction | Native firewall and `edgeos-vxlan`; manual table/rules shadowing; no foreign mutation | before/after snapshots, diffs | Only extension-owned objects change; manual state untouched unless authorized |
-| H11 | Resources | Boot time; CPU/memory of monitor/reconcile; event storms; coalescing; log volume | `ps`, systemd accounting, timing | Bounded on ER-X; no runaway restart/event loop |
+| H11 | Resources | Boot time; CPU/memory of monitor/reconcile; event storms; coalescing; log volume; forwarding impact; compare with `docs/performance-characterization.md` budgets | `ps`, PSS/RSS, systemd accounting, timing, captures | Bounded on ER-X; no runaway restart/event loop; budgets met or deviations documented |
 
 ## 5. Execution sequence
 

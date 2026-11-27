@@ -17,7 +17,7 @@ recorded in [`v0.1.0-evidence.md`](v0.1.0-evidence.md). The production lab is
 | L2 — emulated EdgeOS | not executed; MIPS PIE/`mmap_min_addr` limitation unresolved |
 | L3 — hardware | not executed; see `hardware-qualification-plan.md` |
 
-Full evidence: [`v0.1.0-evidence.md`](v0.1.0-evidence.md).
+Full evidence: [`v0.1.0-evidence.md`](v0.1.0-evidence.md). Performance/scaling: [`performance-characterization.md`](performance-characterization.md).
 
 ## 1. Evidence layers
 
