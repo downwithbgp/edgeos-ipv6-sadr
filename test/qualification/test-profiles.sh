@@ -6,6 +6,10 @@ TMP="${TMPDIR:-/tmp}/sadr-profile-test.$$"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/out"
 
+DEV_MODEL="Ubiquiti EdgeRouter ER-X-TEST"
+DEV_MAC="aa:bb:cc:dd:ee:ff"
+DEV_FP=$(printf '%s\n%s\n' "$DEV_MODEL" "$DEV_MAC" | sha256sum | awk '{print $1}')
+
 # A fake ssh on PATH proves which paths contact a router at all. It never
 # reaches a network; each test replaces it as needed.
 cat >"$TMP/bin/ssh" <<'SH'
@@ -17,6 +21,23 @@ chmod +x "$TMP/bin/ssh"
 export FAKE_SSH_LOG="$TMP/ssh.log"
 : >"$FAKE_SSH_LOG"
 export PATH="$TMP/bin:$PATH"
+
+# The executable adapter and cleanup script the authorization must bind.
+ADAPTER="$TMP/adapter.sh"
+CLEANUP_SCRIPT="$TMP/cleanup.sh"
+cat >"$ADAPTER" <<'SH'
+#!/bin/bash
+case "${1:-}" in
+    fail) printf '{"ok": false, "probes": 0, "wrong_provider": 0}\n' ;;
+    slow) touch "$2"; sleep 10 ;;
+    *) printf '{"ok": true, "probes": 12, "wrong_provider": 0}\n' ;;
+esac
+SH
+# shellcheck disable=SC2016 # the written script intentionally contains "$1"
+printf '#!/bin/bash\ntouch "$1"\n' >"$CLEANUP_SCRIPT"
+chmod +x "$ADAPTER" "$CLEANUP_SCRIPT"
+ADAPTER_SHA=$(sha256sum "$ADAPTER" | awk '{print $1}')
+CLEANUP_SHA=$(sha256sum "$CLEANUP_SCRIPT" | awk '{print $1}')
 
 run_plan() { # profile expected-step
     local profile=$1 expected=$2 out="$TMP/$1"
@@ -44,11 +65,12 @@ expect_fail() { # description command...
 
 write_auth() { # file profile target_class [overrides as JSON object]
     local file=$1 profile=$2 target=$3 overrides=${4:-}
-    python3 - "$file" "$profile" "$target" "$overrides" <<'PY'
+    python3 - "$file" "$profile" "$target" "$overrides" "$DEV_FP" "$ADAPTER_SHA" "$CLEANUP_SHA" <<'PY'
 import json, sys
-file, profile, target, overrides = sys.argv[1:5]
+file, profile, target, overrides, fp, adapter, cleanup = sys.argv[1:8]
 doc = {
     "device_id": "ER-X-TEST",
+    "device_fingerprint": fp,
     "profile": profile,
     "target_class": target,
     "test_ids": ["R1-guard-only"],
@@ -58,11 +80,16 @@ doc = {
     "not_after": "2099-01-01T00:00:00Z",
     "artifact_sha256": "",
 }
+if profile in ("canary", "maintenance"):
+    doc["adapter_sha256"] = adapter
+    doc["cleanup_sha256"] = cleanup
 doc.update(json.loads(overrides) if overrides else {})
 with open(file, "w", encoding="utf-8") as fh:
     json.dump(doc, fh)
 PY
 }
+
+CANARY_ARGS=(--adapter "$ADAPTER" --cleanup "$CLEANUP_SCRIPT" --device-fingerprint "$DEV_FP")
 
 run_plan observe observe
 run_plan canary canary
@@ -76,16 +103,35 @@ write_auth "$AUTH" canary production
 # explicit acknowledgement and the exact authorization file.
 expect_fail "plan profile cannot execute" \
     bash "$ROOT/qualification/profile.sh" --profile plan --execute --authorize --out "$TMP/out" \
-        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" --test-id R1-guard-only
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
 expect_fail "execute requires --authorize" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --out "$TMP/out" \
-        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" --test-id R1-guard-only
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
 expect_fail "canary requires --authorization" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
-        --router admin@router.invalid --device-id ER-X-TEST --test-id R1-guard-only
+        --router admin@router.invalid --device-id ER-X-TEST --test-id R1-guard-only "${CANARY_ARGS[@]}"
 expect_fail "canary requires --test-id" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
-        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH"
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" "${CANARY_ARGS[@]}"
+expect_fail "canary requires --device-fingerprint" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only --adapter "$ADAPTER" --cleanup "$CLEANUP_SCRIPT"
+expect_fail "canary requires --adapter" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only --cleanup "$CLEANUP_SCRIPT" --device-fingerprint "$DEV_FP"
+expect_fail "canary requires --cleanup" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only --adapter "$ADAPTER" --device-fingerprint "$DEV_FP"
+expect_fail "canary command must reference the bound adapter" \
+    env SADR_QUAL_CANARY_CMD='bash /tmp/not-the-bound-adapter.sh' \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
 
 # The isolated gate must fail before any contact when SADR_QUAL_ISOLATED is unset.
 ARTIFACT="$TMP/artifact.deb"
@@ -96,13 +142,34 @@ write_auth "$ISO_AUTH" isolated isolated "{\"artifact_sha256\": \"$ARTIFACT_SHA\
 expect_fail "isolated requires SADR_QUAL_ISOLATED=1" \
     env -u SADR_QUAL_ISOLATED bash "$ROOT/qualification/profile.sh" --profile isolated --execute --authorize \
         --out "$TMP/out" --router admin@router.invalid --device-id ER-X-TEST \
-        --authorization "$ISO_AUTH" --artifact "$ARTIFACT" --config /dev/null
+        --authorization "$ISO_AUTH" --artifact "$ARTIFACT" --config /dev/null \
+        --device-fingerprint "$DEV_FP"
 if [ -s "$FAKE_SSH_LOG" ]; then
     echo "FAIL: a rejected profile contacted the router" >&2
     cat "$FAKE_SSH_LOG" >&2
     exit 1
 fi
 echo "PASS: rejected profiles never contact a router"
+
+# The authorization binding must fail closed on a mismatched dependency or device.
+MISMATCH_ADAPTER="$TMP/mismatch-adapter.json"
+write_auth "$MISMATCH_ADAPTER" canary production '{"adapter_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}'
+expect_fail "profile rejects an adapter hash mismatch" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$MISMATCH_ADAPTER" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
+MISMATCH_CLEANUP="$TMP/mismatch-cleanup.json"
+write_auth "$MISMATCH_CLEANUP" canary production '{"cleanup_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}'
+expect_fail "profile rejects a cleanup hash mismatch" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$MISMATCH_CLEANUP" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
+MISMATCH_FP="$TMP/mismatch-fp.json"
+write_auth "$MISMATCH_FP" canary production '{"device_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"}'
+expect_fail "profile rejects a device fingerprint mismatch" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$MISMATCH_FP" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}"
 
 # Option injection must be refused before it can be interpreted as an ssh option.
 : >"$FAKE_SSH_LOG"
@@ -135,6 +202,16 @@ expect_fail "authorization rejects wrong device" \
 expect_fail "authorization rejects wrong profile" \
     python3 "$ROOT/qualification/authorization.py" --file "$AUTH" --profile isolated \
         --device ER-X-TEST --test-id R1-guard-only
+NO_ADAPTER="$TMP/no-adapter.json"
+write_auth "$NO_ADAPTER" canary production
+python3 - "$NO_ADAPTER" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1])); del doc["adapter_sha256"]
+json.dump(doc, open(sys.argv[1], "w"))
+PY
+expect_fail "authorization requires an adapter hash" \
+    python3 "$ROOT/qualification/authorization.py" --file "$NO_ADAPTER" --profile canary \
+        --device ER-X-TEST --test-id R1-guard-only
 
 # A deadline is part of the grant: an expired or undated file authorizes nothing.
 EXPIRED="$TMP/expired.json"
@@ -151,6 +228,12 @@ json.dump(doc, open(sys.argv[1], "w"))
 PY
 expect_fail "authorization requires a deadline" \
     python3 "$ROOT/qualification/authorization.py" --file "$UNDATED" --profile canary \
+        --device ER-X-TEST --test-id R1-guard-only
+SOON="$TMP/soon.json"
+SOON_TS=$(date -u -d '+60 seconds' +%Y-%m-%dT%H:%M:%SZ)
+write_auth "$SOON" canary production "{\"not_after\": \"$SOON_TS\"}"
+expect_fail "authorization rejects a deadline shorter than the run" \
+    python3 "$ROOT/qualification/authorization.py" --file "$SOON" --profile canary \
         --device ER-X-TEST --test-id R1-guard-only
 
 for duration in 0 3601; do
@@ -186,29 +269,24 @@ expect_fail "authorization rejects an artifact hash mismatch" \
         --device ER-X-TEST --test-id R1-guard-only --artifact "$ARTIFACT"
 
 # A fake router that answers identity and accepts read-only snapshots, nothing more.
-cat >"$TMP/bin/ssh" <<'SH'
+cat >"$TMP/bin/ssh" <<SH
 #!/bin/bash
-printf '%s\n' "$*" >>"$FAKE_SSH_LOG"
-case "$*" in
-    *"uname -r"*) printf 'EdgeRouter.ER-e50.v3.0.1.5862409.test\n4.14.54-UBNT\nER-X-TEST\n'; exit 0 ;;
+printf '%s\n' "\$*" >>"\$FAKE_SSH_LOG"
+case "\$*" in
+    *"uname -r"*) printf '%s\n' 'EdgeRouter.ER-e50.v3.0.1.5862409.test' '4.14.54-UBNT' '$DEV_MODEL' '$DEV_MAC'; exit 0 ;;
     *) exit 0 ;;
 esac
 SH
 chmod +x "$TMP/bin/ssh"
 : >"$FAKE_SSH_LOG"
 
-CANARY_CMD="$TMP/canary.sh"
-cat >"$CANARY_CMD" <<'SH'
-#!/bin/bash
-printf '{"ok": true, "probes": 12, "wrong_provider": 0}\n'
-SH
-chmod +x "$CANARY_CMD"
 CLEANUP_MARK="$TMP/cleanup-ran"
-SADR_QUAL_CANARY_CMD="bash $CANARY_CMD" \
+SADR_QUAL_CANARY_CMD="bash $ADAPTER" \
 SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+SADR_QUAL_VERIFY_CMD="true" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/canary" \
         --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
-        --test-id R1-guard-only >/dev/null
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null
 python3 - "$TMP/canary/results.json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
@@ -224,17 +302,12 @@ fi
 echo "PASS: authorized cleanup runs after the canary"
 
 # A failed canary evidence object must fail the run while still cleaning up.
-BAD_CMD="$TMP/bad.sh"
-cat >"$BAD_CMD" <<'SH'
-#!/bin/bash
-printf '{"ok": false, "probes": 0, "wrong_provider": 0}\n'
-SH
-chmod +x "$BAD_CMD"
 rm -f "$CLEANUP_MARK"
-if SADR_QUAL_CANARY_CMD="bash $BAD_CMD" SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+if SADR_QUAL_CANARY_CMD="bash $ADAPTER fail" SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+    SADR_QUAL_VERIFY_CMD="true" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/badcanary" \
         --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
-        --test-id R1-guard-only >/dev/null 2>&1; then
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1; then
     echo "FAIL: a failed canary evidence object exited zero" >&2
     exit 1
 fi
@@ -244,21 +317,43 @@ if [ ! -e "$CLEANUP_MARK" ]; then
 fi
 echo "PASS: a failed canary exits non-zero and still cleans up"
 
+# Cleanup verification failure is a recovery failure, not a pass.
+rm -f "$CLEANUP_MARK"
+if SADR_QUAL_CANARY_CMD="bash $ADAPTER" SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+    SADR_QUAL_VERIFY_CMD="false" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/verifyfail" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1; then
+    echo "FAIL: a failed cleanup verification exited zero" >&2
+    exit 1
+fi
+python3 - "$TMP/verifyfail/results.json" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+cleanup={s["id"]:s for s in d["steps"]}["cleanup"]
+assert cleanup["status"]=="fail" and "recovery failure" in cleanup["detail"], cleanup
+print("PASS: a failed cleanup verification is reported as a recovery failure")
+PY
+
+# Missing verification must block before mutation.
+if SADR_QUAL_CANARY_CMD="bash $ADAPTER" SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/noverify" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1; then
+    echo "FAIL: a canary without a verification command exited zero" >&2
+    exit 1
+fi
+echo "PASS: missing cleanup verification blocks the run"
+
 # Interrupting the orchestration session must trigger the authorized cleanup.
-SLOW_CMD="$TMP/slow.sh"
-cat >"$SLOW_CMD" <<'SH'
-#!/bin/bash
-touch "$1"
-sleep 10
-SH
-chmod +x "$SLOW_CMD"
 rm -f "$CLEANUP_MARK" "$TMP/mutation-started"
 set -m # background job gets its own process group so the signal reaches the whole tree
-SADR_QUAL_CANARY_CMD="bash $SLOW_CMD $TMP/mutation-started" \
+SADR_QUAL_CANARY_CMD="bash $ADAPTER slow $TMP/mutation-started" \
 SADR_QUAL_CLEANUP_CMD="touch $CLEANUP_MARK" \
+SADR_QUAL_VERIFY_CMD="true" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/interrupted" \
         --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
-        --test-id R1-guard-only >/dev/null 2>&1 &
+        --test-id R1-guard-only "${CANARY_ARGS[@]}" >/dev/null 2>&1 &
 pid=$!
 set +m
 for _ in $(seq 1 100); do [ -e "$TMP/mutation-started" ] && break; sleep 0.1; done
@@ -319,10 +414,10 @@ PY
 echo "PASS: run.sh refuses a mismatched artifact hash"
 
 # A failed observe collection must exit non-zero, not report success.
-cat >"$TMP/bin/ssh" <<'SH'
+cat >"$TMP/bin/ssh" <<SH
 #!/bin/bash
-case "$*" in
-    *"uname -r"*) printf 'EdgeRouter.ER-e50.v3.0.1.5862409.test\n4.14.54-UBNT\nER-X-TEST\n'; exit 0 ;;
+case "\$*" in
+    *"uname -r"*) printf '%s\n' 'EdgeRouter.ER-e50.v3.0.1.5862409.test' '4.14.54-UBNT' '$DEV_MODEL' '$DEV_MAC'; exit 0 ;;
     *) exit 1 ;;
 esac
 SH
