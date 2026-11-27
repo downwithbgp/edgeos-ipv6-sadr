@@ -1,0 +1,16 @@
+{
+  "device_id": "Ubiquiti EdgeRouter",
+  "device_fingerprint": "0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440",
+  "profile": "canary",
+  "target_class": "production",
+  "test_ids": [
+    "R1-guard-only"
+  ],
+  "max_duration_seconds": 120,
+  "approved_mutation_scope": "one exact terminal rule: from fd42:901::a1/128 unreachable pref 21031; no table, route, interface, package or configuration change",
+  "recovery": "device-local systemd-run timer plus r1-cleanup.sh exact deletion and verification; foreign rule refused; controller verification required",
+  "not_after": "<MAINTAINER-SET-UTC-DEADLINE>",
+  "artifact_sha256": "",
+  "adapter_sha256": "4645f199df73d78b80687f19bb1246aba48259ec3130d61bf1a76b313e75cca4",
+  "cleanup_sha256": "a32e1d8c97bf88fe3e072ccbd23afca6d61c186170288d1922ce40a379d54843"
+}

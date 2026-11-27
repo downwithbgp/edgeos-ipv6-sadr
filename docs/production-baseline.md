@@ -17,6 +17,10 @@ output remains outside the repository; only sanitized counts and identifiers are
 | Memory | 247 MiB total; 121 used; 32 free; 93 buff/cache; 112 available | Verified (target) |
 | Root filesystem | 214.9 MiB, 85.4 MiB used, 124.8 MiB available | Verified (target) |
 | Load | approximately 1.5 (1/5/15 minute averages at observation) | Verified (target) |
+| Stable identity fingerprint | `0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440` (SHA-256 of the board model string and management MAC, newline-separated) | Verified (target) |
+
+The fingerprint is a reproducibility aid for authorization binding; it is not a secret and contains
+no address. The raw model string and MAC remain outside the repository.
 
 The exact package set includes `vyatta-cfg`, `libvyatta-cfg1`, `vyatta-cfg-system`,
 `vyatta-cfg-firewall`, `edgeos-vxlan 0.3.0`, `edgeos-vxlan-kmod 0.3.0`, and systemd 232 packages.
@@ -49,12 +53,49 @@ protected production state. The SADR managed priority range, internal table `100
   `41913` carries VXLAN routes. These interfaces and table are production state and must not be
   repurposed.
 - `ethtool` was available only at `/sbin/ethtool`; the unprivileged `ubnt` PATH did not include it.
-- `hw-tc-offload` was **off** on all 21 observed links.
+- **Correction:** `hw-tc-offload` was off on all 21 observed links, but that ethtool feature is not
+  the EdgeOS hardware-forwarding state and must not be recorded as "offload disabled".
+- EdgeOS offload, observed read-only with the operational wrapper
+  (`/opt/vyatta/bin/vyatta-op-cmd-wrapper show ubnt offload`):
+  - `system { offload { hwnat enable; ipsec enable } }` is configured;
+  - `HWNAT offload module: loaded` and `IPSec offload module: loaded`;
+  - `show ubnt offload statistics` reports "Offload statistics is not available for this platform".
+- Acceleration states are therefore distinct: **configured** = yes (HWNAT enabled), **module
+  loaded** = yes, **demonstrated accelerated forwarding** = **no**. No functional fast-path test has
+  been run and no counter/statistic proves a flow was accelerated.
+- Kernel module inspection under `ubnt` returned no matching `lsmod`/`/proc/modules` entries; the
+  vendor operational command is authoritative for module load state.
 - `tx-checksum-ipv6` was off on 20 links and on for one; `tx-checksumming` was on for all 21.
 - `rx-checksumming` was mixed; `rx-vlan-offload` was off on all; `tx-vlan-offload` was off on 20 and
-  on for one.
-- These are feature-report observations, not a claim about the UBNT proprietary fast path or
-  multi-table RPDB offload behavior. No offload setting was changed.
+  on for one. These are NIC feature reports, not HWNAT state.
+- No offload setting was changed.
+
+## 3a. Management path, topology and test-endpoint capability
+
+- Management is key-based SSH to the router's IPv4 address on the dedicated server VLAN; the
+  controller sits on the same VLAN and uses the router as its gateway. A second, independent
+  out-of-band path is still **not established** (serial hardware exists; login/recovery is untested).
+- Interfaces observed: the switch bridge, eight 802.1Q VLANs (server, management, user, lab, IoT,
+  K8s IPv6-only, K8s pod prefix, guest), two VXLAN links (a lab ULA link and the production Route64
+  link) and one HE.net tunnel. Two physical ports had no carrier. No interface was created or changed.
+- IPv6: the lab VXLAN carries a ULA /64; the provider-delegated /64s are on-link per VLAN; one routed
+  /64 and one host route are learned via the K8s IPv6-only VLAN; the default is learned by RA from
+  the provider. A ULA destination with no specific route follows the provider default, so a ULA
+  destination must never be used for synthetic traffic (containment).
+- RPDB precedence: the five protected manual rules match only the Route64 /56 and the router's
+  Route64 VXLAN address. Priorities `20000–21031` are unused, then `32766` main and `32767` default.
+  A synthetic ULA source matches none of the earlier rules, so a rule at `21031` is reached for a
+  non-local destination. `ip -6 route get <on-link VLAN destination> from <synthetic ULA source>`
+  selects the on-link VLAN interface (forwarding), not the provider default.
+- Device-local cleanup capability: `systemd-run` 232 supports `--on-active=SECONDS` and works through
+  passwordless sudo; `/tmp` is writable; `sleep`, `sh`, `bash`, `awk`, `grep`, `flock`, `date`,
+  `sha256sum` and `nc` exist. `at` exists but `atd` is absent; `timeout`, `tcpdump` and `python3` are
+  absent. No SADR units exist.
+- Linux endpoints: the controller has a global /64 on the server VLAN and supports macvlan (including
+  `private` mode), network namespaces, `tcpdump` and `python3`. The Unraid host refuses key-based SSH
+  from the controller, so a physically separate second endpoint is **not available** without
+  operator intervention; a namespace-based endpoint pair on the controller is the minimum viable
+  topology.
 
 ## 4. BGP, firewall and control plane
 

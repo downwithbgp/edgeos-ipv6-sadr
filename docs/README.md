@@ -30,7 +30,8 @@
 | [`production-installation-plan.md`](production-installation-plan.md) | Plan only; staged install without activation, side effects and gates |
 | [`production-maintenance-plan.md`](production-maintenance-plan.md) | Plan only; maintenance-window tests and deferred tests |
 | [`production-migration-plan.md`](production-migration-plan.md) | Plan only; coexistence and incremental cutover from manual state |
-| [`production-canary-authorization-request.md`](production-canary-authorization-request.md) | R1 request only; exact mutation, rollback and stop conditions |
+| [`production-canary-authorization-request.md`](production-canary-authorization-request.md) | Execution-ready R1 proposal: topology, A/B/A probes, exact mutation/cleanup, invariants and operator actions |
+| [`r1-authorization-candidate.json`](r1-authorization-candidate.json) | Populated R1 authorization; only `not_after` and maintainer approval are open |
 | [`release-blockers.md`](release-blockers.md) | Status vocabulary, release-blocking items and supported configuration |
 
 Planning artifacts:
