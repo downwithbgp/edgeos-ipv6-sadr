@@ -1,0 +1,31 @@
+# Build and package artifacts
+build/
+*.deb
+*.buildinfo
+*.changes
+*.dsc
+*.tar.*
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.debhelper/
+obj-*/
+
+# Compiled artifacts
+*.o
+*.ko
+*.so
+*.a
+
+# Scratch and logs
+*.log
+tmp/
+scratch/
+artifacts/
+*.swp
+*~
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
