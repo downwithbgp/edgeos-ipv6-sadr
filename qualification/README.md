@@ -173,7 +173,7 @@ drives every profile plan, the authorization validator (deadline, device/profile
 duration bounds, fingerprint and dependency hashes), the execution gates, cleanup verification,
 cleanup on failure and interrupt, and the non-zero exit for a failed observe collection.
 `test/qualification/test-cleanup.sh` tests the device cleanup script against a fake `ip` and the
-adapter plan/refusal paths (cleanup 19/19). `test/qualification/test-identity.sh` covers the framed
+adapter plan/refusal paths (cleanup 20/20; the canary adapter also accepts SADR_QUAL_CTRL_IF/SADR_QUAL_GW6 for an explicit controller VXLAN path and SADR_QUAL_E1_MAC/SADR_QUAL_E2_MAC for optional MAC pinning). `test/qualification/test-identity.sh` covers the framed
 identity parser (14/14); `test/qualification/test-manifest.sh` covers manifest generation, tamper
 rejection and candidate binding (4/4). `test/integration/r1-canary-sim.sh` runs the A/B/A sequence,
 the controller redirect-sysctl regression and cleanup semantics in the privileged generic-Linux

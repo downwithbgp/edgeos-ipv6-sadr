@@ -1,6 +1,6 @@
 {
   "files": {
-    "qualification/adapters/r1-canary.sh": "14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc",
+    "qualification/adapters/r1-canary.sh": "9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a",
     "qualification/adapters/r1-cleanup.sh": "0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883",
     "qualification/adapters/r1-install.sh": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f",
     "qualification/authorization.py": "23d398974ad222ca43d01370e9fd7c2066e1d3b79cb26a1fb442345604ba55ba",
@@ -12,7 +12,7 @@
     "qualification/report.py": "a6b8be4f9cf612e913d0931a4748e35487cdc456df22758805f90543ba68618f",
     "qualification/run.sh": "c027fa04ec9195f430729bd50b40d41ce71a7a909bfb1e591fe581a4aa1d5a11"
   },
-  "generated_utc": "2026-11-27T21:04:43Z",
-  "manifest_sha256": "a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0",
+  "generated_utc": "2026-11-27T22:37:47Z",
+  "manifest_sha256": "055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377",
   "schema": 1
 }

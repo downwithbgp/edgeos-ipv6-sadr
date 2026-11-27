@@ -100,6 +100,18 @@ else
     fail=$((fail + 1))
 fi
 
+# The explicit controller override must be plumbed through the plan without contact.
+if SADR_QUAL_CTRL_IF=vxlan900c SADR_QUAL_GW6=fd42:900::1 \
+    bash "$ROOT/qualification/adapters/r1-canary.sh" --plan --out "$TMP/plan-override" \
+    >"$TMP/plan-override.txt" 2>&1 &&
+    grep -q "vxlan900c via fd42:900::1" "$TMP/plan-override.txt"; then
+    echo "PASS: adapter plan renders the explicit controller override"
+    pass=$((pass + 1))
+else
+    echo "FAIL: adapter plan is missing the explicit controller override" >&2
+    fail=$((fail + 1))
+fi
+
 # The adapter must refuse a mismatched adapter or cleanup hash before contact.
 adapter="$ROOT/qualification/adapters/r1-canary.sh"
 cleanup="$ROOT/qualification/adapters/r1-cleanup.sh"

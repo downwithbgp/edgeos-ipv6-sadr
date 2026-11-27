@@ -43,6 +43,10 @@ CLEANUP_PATH=${SADR_QUAL_CLEANUP_PATH:-}
 CLEANUP_SHA=${SADR_QUAL_CLEANUP_SHA256:-}
 INSTALL_PATH=${SADR_QUAL_INSTALL_PATH:-}
 INSTALL_SHA=${SADR_QUAL_INSTALL_SHA256:-}
+CTRL_IF=${SADR_QUAL_CTRL_IF:-}
+CTRL_GW6=${SADR_QUAL_GW6:-}
+E1_MAC_OVERRIDE=${SADR_QUAL_E1_MAC:-}
+E2_MAC_OVERRIDE=${SADR_QUAL_E2_MAC:-}
 SSH_KEY=${SADR_QUAL_SSH_KEY:-$HOME/.ssh/id_ed25519}
 MODE=plan
 OUT=${SADR_QUAL_OUT:-}
@@ -55,6 +59,10 @@ Harness environment: SADR_QUAL_ROUTER, SADR_QUAL_TEST_ID, SADR_QUAL_APPROVED_SCO
 SADR_QUAL_NOT_AFTER, SADR_QUAL_MAX_DURATION, SADR_QUAL_DEVICE_FINGERPRINT,
 SADR_QUAL_DEVICE_ID, SADR_QUAL_ADAPTER_SHA256, SADR_QUAL_CLEANUP_PATH,
 SADR_QUAL_CLEANUP_SHA256, SADR_QUAL_INSTALL_PATH, SADR_QUAL_INSTALL_SHA256.
+SADR_QUAL_CTRL_IF and SADR_QUAL_GW6 select an explicit controller VXLAN path
+(both required together); without them the controller default path is used.
+SADR_QUAL_E1_MAC and SADR_QUAL_E2_MAC optionally pin the controller macvlan
+MACs (useful when the target has cached the previous run's neighbors).
 --baseline runs Stages 0-2 only and never deploys device runtime files, arms a
 device timer or changes the target RPDB.
 EOF
@@ -90,10 +98,16 @@ CTRLERR="$OUT/controller.err"
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 if [ "$MODE" = "plan" ]; then
+    if [ -n "$CTRL_IF" ]; then
+        CTRL_PATH="$CTRL_IF via $CTRL_GW6 (explicit override)"
+    else
+        CTRL_PATH="derived from the controller default path"
+    fi
     cat <<EOF
 R1 plan (no device contact, no local change):
   selector:    $SELECTOR/128 (synthetic ULA, verified unused)
   priority:    $PREF, action unreachable, no table/route/interface change
+  controller:  $CTRL_PATH
   destination/control: derived from the controller's on-link /64 at execute time
   phases:      A1 $MATCH_N matching + $CONTROL_N control; B same with the rule;
                A2 same after exact deletion
@@ -368,9 +382,13 @@ cleanup_device() {
         rc=1
     else
         rsudo "systemctl stop sadr-r1-cleanup.timer" >/dev/null 2>&1
+        rsudo "systemctl stop sadr-r1-cleanup.service" >/dev/null 2>&1
         rsudo "systemctl reset-failed sadr-r1-cleanup.service" >/dev/null 2>&1
         rsudo "cat '$RUNDIR/cleanup.log'" >"$OUT/device-cleanup.log" 2>/dev/null
-        rsudo "rm -f '$RUNDIR/r1-install.sh' '$RUNDIR/r1-cleanup.sh' '$RUNDIR/cleanup.log' '$RUNDIR/lock' '$RUNDIR/closed'; rmdir '$RUNDIR'" >/dev/null 2>&1
+        # Remove every file (including logs created by the timer service), then
+        # the directory; an unknown leftover previously defeated rmdir.
+        rsudo "find '$RUNDIR' -mindepth 1 -maxdepth 1 -exec rm -f {} +" >/dev/null 2>&1
+        rsudo "rmdir '$RUNDIR'" >/dev/null 2>&1
         timer_out=$(rssh "systemctl show sadr-r1-cleanup.timer -p ActiveState --value" 2>/dev/null)
         timer_rc=$?
         if [ "$timer_rc" -ne 0 ]; then
@@ -707,11 +725,40 @@ fi
 
 # ---- Stage 0: controller preparation ----
 derive_local_path() {
-    IF=$(ip -4 route show default | awk '{print $5; exit}')
-    GW6=$(ip -6 route show default | awk '/^default/ {print $3; exit}')
-    V6=$(ip -6 -o addr show dev "$IF" scope global | awk '$4 ~ /\/64$/ {print $4; exit}')
-    if [ -z "$IF" ] || [ -z "$GW6" ] || [ -z "$V6" ]; then
-        fail controller_preparation "cannot derive the controller's on-link IPv6 path"
+    if [ -n "$CTRL_IF" ] || [ -n "$CTRL_GW6" ]; then
+        # Explicit topology override (e.g. the permitted lab VXLAN). Both
+        # values are required together; the interface must be a VXLAN device
+        # with a global /64, and the next hop must be on-link inside it.
+        if [ -z "$CTRL_IF" ] || [ -z "$CTRL_GW6" ]; then
+            fail controller_preparation "SADR_QUAL_CTRL_IF and SADR_QUAL_GW6 must be set together"
+        fi
+        IF=$CTRL_IF
+        GW6=$CTRL_GW6
+        ip link show dev "$IF" >/dev/null 2>&1 ||
+            fail controller_preparation "controller interface $IF does not exist"
+        ip -d link show dev "$IF" 2>/dev/null | grep -q "vxlan id" ||
+            fail controller_preparation "controller interface $IF is not a VXLAN device"
+        V6=$(ip -6 -o addr show dev "$IF" scope global 2>/dev/null | awk '$4 ~ /\/64$/ {print $4; exit}')
+        [ -n "$V6" ] ||
+            fail controller_preparation "controller interface $IF has no global /64"
+        python3 - "$V6" "$GW6" <<'PY' || fail controller_preparation "SADR_QUAL_GW6 is not inside the controller /64"
+import ipaddress, sys
+net = ipaddress.ip_network(sys.argv[1], strict=False)
+addr = ipaddress.ip_address(sys.argv[2])
+raise SystemExit(0 if addr in net else 1)
+PY
+        local gw_route
+        gw_route=$(ip -6 route get "$GW6" oif "$IF" 2>/dev/null) ||
+            fail controller_preparation "cannot resolve SADR_QUAL_GW6 on $IF"
+        printf '%s' "$gw_route" | grep -q "dev $IF" ||
+            fail controller_preparation "SADR_QUAL_GW6 does not resolve on $IF: $gw_route"
+    else
+        IF=$(ip -4 route show default | awk '{print $5; exit}')
+        GW6=$(ip -6 route show default | awk '/^default/ {print $3; exit}')
+        V6=$(ip -6 -o addr show dev "$IF" scope global | awk '$4 ~ /\/64$/ {print $4; exit}')
+        if [ -z "$IF" ] || [ -z "$GW6" ] || [ -z "$V6" ]; then
+            fail controller_preparation "cannot derive the controller's on-link IPv6 path"
+        fi
     fi
     read -r PREFIX D C <<<"$(python3 - "$V6" <<'PY'
 import ipaddress, sys
@@ -751,6 +798,29 @@ stage0_prepare() {
     if ! ip link add "$MV2" link "$IF" type macvlan mode private 2>"$CTRLERR"; then
         controller_fail "cannot create macvlan $MV2 on $IF"
     fi
+    if [ -n "$E1_MAC_OVERRIDE" ] || [ -n "$E2_MAC_OVERRIDE" ]; then
+        for m in "$E1_MAC_OVERRIDE" "$E2_MAC_OVERRIDE"; do
+            [ -z "$m" ] && continue
+            printf '%s' "$m" | grep -Eq '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$' ||
+                fail controller_preparation "invalid pinned MAC: $m"
+            first=${m%%:*}
+            [ $((0x$first & 1)) -eq 0 ] ||
+                fail controller_preparation "pinned MAC $m is multicast"
+            [ $((0x$first & 2)) -ne 0 ] ||
+                fail controller_preparation "pinned MAC $m is not locally administered"
+        done
+        if [ -n "$E1_MAC_OVERRIDE" ] && [ "$E1_MAC_OVERRIDE" = "$E2_MAC_OVERRIDE" ]; then
+            fail controller_preparation "E1 and E2 pinned MACs must differ"
+        fi
+    fi
+    if [ -n "$E1_MAC_OVERRIDE" ]; then
+        ip link set dev "$MV1" address "$E1_MAC_OVERRIDE" 2>"$CTRLERR" ||
+            controller_fail "cannot pin the E1 macvlan MAC"
+    fi
+    if [ -n "$E2_MAC_OVERRIDE" ]; then
+        ip link set dev "$MV2" address "$E2_MAC_OVERRIDE" 2>"$CTRLERR" ||
+            controller_fail "cannot pin the E2 macvlan MAC"
+    fi
     ip link set "$MV1" netns "$NS_E1" 2>"$CTRLERR" || controller_fail "cannot move $MV1 to $NS_E1"
     ip link set "$MV2" netns "$NS_E2" 2>"$CTRLERR" || controller_fail "cannot move $MV2 to $NS_E2"
     ip netns exec "$NS_E1" ip link set lo up 2>"$CTRLERR" || controller_fail "cannot raise lo in $NS_E1"
@@ -781,6 +851,13 @@ stage0_prepare() {
     done
     if printf '%s' "$dad" | grep -q 'tentative'; then fail controller_preparation "destination DAD did not complete"; fi
     if printf '%s' "$dad" | grep -q 'dadfailed'; then fail controller_preparation "destination DAD failed (address in use)"; fi
+    # A connected route for the controller /64 makes a global next hop
+    # resolvable inside the namespaces; the specific D/128 route below still
+    # forces the router path.
+    ip netns exec "$NS_E1" ip -6 route add "$PREFIX/64" dev "$MV1" 2>"$CTRLERR" ||
+        controller_fail "cannot add the controller /64 route in $NS_E1"
+    ip netns exec "$NS_E2" ip -6 route add "$PREFIX/64" dev "$MV2" 2>"$CTRLERR" ||
+        controller_fail "cannot add the controller /64 route in $NS_E2"
     ip netns exec "$NS_E1" ip -6 route add "$D/128" via "$GW6" dev "$MV1" 2>"$CTRLERR" ||
         controller_fail "cannot add the router path for D in $NS_E1"
     ip netns exec "$NS_E1" ip -6 route add default via "$GW6" dev "$MV1" 2>"$CTRLERR" ||

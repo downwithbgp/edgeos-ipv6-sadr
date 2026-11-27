@@ -1,15 +1,28 @@
-# R1 execution evidence (Phase V-B / V-C)
+# R1 execution evidence (Phase V-B / V-C / VI-C)
 
-**SADR product status: R1 NOT RUN. Phase V-C A1 baseline: FAILED at the production IPv6 firewall;
-no production mutation was attempted.** No RPDB rule, device timer, runtime directory, package,
-configuration change or controller namespace remains. Table `41913` and rules `10410–10414` are
-unchanged. Raw captures and run directories remain outside the repository.
+**SADR product status: R1 EXECUTED ONCE (Phase VI-C, lab-VXLAN topology). Phase V-C A1 baseline:
+FAILED at the production IPv6 firewall; no production mutation was attempted in V-C.** In Phase VI-C
+the single authorized lab-VXLAN R1 crossed the production mutation boundary once; A1 and B passed on
+the tested path, A2 was not run because the cleanup gate failed on the experiment's runtime
+directory (removed and verified manually), and acceleration classification is UNKNOWN. No RPDB rule,
+device timer, runtime directory, package, configuration change or controller namespace remains.
+Table `41913` and rules `10410–10414` are unchanged. Raw captures and run directories remain outside
+the repository.
 
-**Phase VI-A/VI-B disposition:** Phase V-C is accepted; R1 remains NOT RUN. The Phase V-C
-conditional authorization was suspended in Phase VI-A and is **retired without execution** in Phase
-VI-B (not consumed). No firewall exception is authorized or created. Evidence and implementation are
-preserved; PR #1 remains draft. Future execution requires a fresh candidate-bound authorization; the
-revised lab-VXLAN topology and manifest are prepared (not executed) in `docs/phase-vi-b/`.
+**Phase VI-A/VI-B disposition:** Phase V-C is accepted; the Phase V-C conditional authorization was
+suspended in VI-A and retired without execution/consumption in VI-B. **Phase VI-C execution:** one
+authorized lab-VXLAN R1 (not a V-C retry), window 2026-11-27T22:29:59Z–22:31:40Z, mutation boundary
+crossed 22:30:45Z; A1 20/20 + control 10/10; B matching 0/20 + control 10/10; A2 NOT RUN; exact rule
+deletion verified; runtime directory removed and verified; protected rules/table/BGP/defaults/memory
+invariants checked; adapter result status `fail` (cleanup gate only). Executed binding: adapter
+`6d22e6b0a304eb6ad8f2cc6629670c7128bb1a26be23e395a6941d93b03c61ce`, manifest
+`5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4` (record
+`docs/r1-authorization-viic.json`). The current manifest/adapter were regenerated after the run for
+the cleanup correction (adapter
+`9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a`, manifest
+`055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377`) and are **not** the executed
+binding. No firewall exception is authorized or created; PR #1 remains draft; a fresh
+candidate-bound authorization is required for any future execution.
 
 ## 1. Phase V-B abort — root cause
 
@@ -56,9 +69,13 @@ deployment:
   available memory.
 
 Manifest at the V-C run: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
-Phase VI-B regenerated the manifest to `a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0`
-after adding the retired-candidate refusal to `qualification/authorization.py`; the V-C evidence above
-remains bound to `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
+Phase VI-C executed the lab-VXLAN R1 with adapter
+`6d22e6b0a304eb6ad8f2cc6629670c7128bb1a26be23e395a6941d93b03c61ce` and manifest
+`5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4`; the current files were
+regenerated after the run for the cleanup fix (adapter
+`9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a`, manifest
+`055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377`) and are not the executed
+binding. The V-C evidence above remains bound to the hashes as executed.
 Frozen device executables: adapter `14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc`,
 cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
 install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.

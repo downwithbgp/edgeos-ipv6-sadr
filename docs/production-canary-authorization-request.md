@@ -189,9 +189,13 @@ The profile verifies the manifest and the candidate hashes before execution; tes
 tampering and candidate binding.
 
 Final manifest at retirement: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
-Phase VI-B regenerated the manifest to `a0c2367631c8c33ea77f94f086aa10c7b64bc0a65bcaef319f076d16886c8ae0`
-after adding the retired-candidate refusal to `qualification/authorization.py`; this retired request
-remains bound to the V-C record.
+Phase VI-C executed the lab-VXLAN R1 with adapter
+`6d22e6b0a304eb6ad8f2cc6629670c7128bb1a26be23e395a6941d93b03c61ce` and manifest
+`5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4`; the current files were
+regenerated after the run for the cleanup fix (adapter
+`9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a`, manifest
+`055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377`) and are not the executed
+binding. This retired request remains bound to the V-C record.
 Frozen device executables: adapter `14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc`,
 cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
 install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.
