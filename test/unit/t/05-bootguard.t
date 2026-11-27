@@ -63,8 +63,27 @@ is($r->{rc}, 0, 'boot guard is idempotent');
 is(scalar @{ read_json("$f->{dir}/state/boot-guards.json")->{guards} }, $before,
     'intent is not duplicated');
 
+# A later boot-guard run is additive: dropping a policy from config.boot must
+# not lose ownership of the still-installed guard.
+write_text($cfg_path, <<'ONE');
+protocols {
+    ipv6-sadr {
+        policy provider-a {
+            source-prefix 2001:db8:a000::/56
+        }
+    }
+}
+ONE
+$r = run_cli($f, 'boot-guard', '--config', $cfg_path);
+is($r->{rc}, 0, 'boot guard accepts a smaller configuration');
+$intent = read_json("$f->{dir}/state/boot-guards.json");
+is(scalar @{ $intent->{guards} }, 2, 'boot intent is additive across runs');
+ok(state_rule(read_json("$f->{dir}/state.json"), 20582,
+    '2001:db8:b000::/56', 'unreachable'), 'earlier guard remains owned');
+
 # Intent is written before the first mutation, so a failed install is attributable.
 reset_fixture($f);
+write_text($cfg_path, config_boot());
 $f->{env}{FAKE_IP_FAIL_AT} = 1;
 $r = run_cli($f, 'boot-guard', '--config', $cfg_path);
 is($r->{rc}, 7, 'failed guard install returns failure');

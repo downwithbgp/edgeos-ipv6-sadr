@@ -69,7 +69,7 @@ like(read_text("$op/policy/node.def"), qr/^run: .* policy$/m, 'policy list op co
 like(read_text("$op/policy/node.tag/node.def"), qr/^run: .* policy --name "\$4"$/m,
     'policy name op command uses the tag argument');
 my $route_run = read_text("$op/route/source/node.tag/destination/node.tag/node.def");
-like($route_run, qr/^run: .* route --source "\$6" --destination "\$7"$/m,
+like($route_run, qr/^run: .* route --source "\$5" --destination "\$7"$/m,
     'route op command uses named selectors and tag arguments');
 unlike(read_text("$op/route/source/node.tag/node.def"), qr/^run:/m,
     'source-only route tag cannot execute without a destination');

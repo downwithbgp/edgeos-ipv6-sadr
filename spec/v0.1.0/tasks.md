@@ -7,7 +7,7 @@
 | T0 contract reconciliation | complete | `docs/v0.1.0-refinements.md`, normative docs |
 | T1 production module/CLI | complete | `22ee8fb`; L0 suites |
 | T2 templates/services | complete | `b3c12ea`; structural checks |
-| T3 unit/property/failure | complete | `934b97f`; 591 assertions |
+| T3 unit/property/failure | complete | `934b97f`; 599 assertions |
 | T4 packaging/CI | complete off-device | `2d25ea6`; lifecycle 13, artifact 17, reproducible hash |
 | T5 production netns | complete | `c2304db`; 145 pass / 0 fail |
 | T6 hardware/migration design | complete as plans | `docs/hardware-qualification-plan.md`, `docs/migration-plan.md` |

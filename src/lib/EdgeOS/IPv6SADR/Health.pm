@@ -160,14 +160,14 @@ sub health {
 
         my $has_conflict = $ownership_err ? 1 : 0;
         for my $c (@conflicts) {
-            $has_conflict = 1 if $c =~ /\Q$name\E/ || $c =~ /\btable\s+\Q$table\E\b/;
+            $has_conflict = 1 if $c =~ /\b\Q$name\E\b/ || $c =~ /\btable\s+\Q$table\E\b/;
             for my $s (@src) {
                 $has_conflict = 1 if $c =~ /\Q$s\E/;
             }
         }
         my $has_dep = 0;
         for my $d (@deps) {
-            $has_dep = 1 if $d =~ /\Q$name\E/ || $d =~ /\btable\s+\Q$table\E\b/;
+            $has_dep = 1 if $d =~ /\b\Q$name\E\b/ || $d =~ /\btable\s+\Q$table\E\b/;
             for my $s (@src) {
                 $has_dep = 1 if $d =~ /\Q$s\E/;
             }

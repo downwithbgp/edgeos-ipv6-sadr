@@ -44,7 +44,7 @@ sub new {
         dry_run   => $o{dry_run}   // 0,
         log_fh    => $o{log_fh},
     }, $class;
-    make_path($self->{state_dir}) unless -d $self->{state_dir};
+    eval { make_path($self->{state_dir}) unless -d $self->{state_dir}; };
     return $self;
 }
 
@@ -147,12 +147,13 @@ sub _strip_quotes {
 
 sub _fnv1a {
     my ($str) = @_;
+    use integer;
     my $h = 2166136261;
     for my $c (unpack('C*', $str)) {
         $h ^= $c;
         $h = ($h * 16777619) & 0xffffffff;
     }
-    return $h;
+    return $h < 0 ? $h + 4294967296 : $h;
 }
 
 sub _json {
@@ -193,8 +194,10 @@ sub _run_capture {
     close $out;
     close $errh;
     waitpid($pid, 0);
-    my $rc = $? >> 8;
-    return ($rc, $stdout, $stderr);
+    my $status = $?;
+    my $signal = $status & 127;
+    die "command @cmd terminated by signal $signal\n" if $signal;
+    return ($status >> 8, $stdout, $stderr);
 }
 
 sub _api_verb {
@@ -214,6 +217,9 @@ sub _api_cmd {
     if ($rc != 0) {
         if ($err =~ /\S/) {
             die "configuration API failure ($verb @path): $err\n";
+        }
+        if ($out =~ /\S/) {
+            die "configuration API inconsistency ($verb @path): failed with output\n";
         }
         return (1, '');
     }
@@ -249,6 +255,15 @@ sub _api_exists {
 sub read_desired {
     my ($self, $mode) = @_;
     $mode //= 'active';
+    # A dead/inconsistent API must never be mistaken for an empty policy
+    # subtree: reconciling an empty desired state would remove every guard.
+    my $root = $self->_api_exists($mode, 'protocols');
+    my $subtree = $self->_api_exists($mode, 'protocols', 'ipv6-sadr');
+    die "configuration API cannot prove the protocols root; refusing empty desired state\n"
+        unless $root;
+    die "configuration API inconsistency: ipv6-sadr exists without protocols\n"
+        if $subtree && !$root;
+    return $self->validate_desired({}) unless $subtree;
     my @internal = $self->_api_list($mode, 'protocols', 'ipv6-sadr', 'internal-interface');
     my @exceptions = $self->_api_list($mode, 'protocols', 'ipv6-sadr', 'destination-exception');
     my @policy_names = $self->_api_list($mode, 'protocols', 'ipv6-sadr', 'policy');
@@ -469,14 +484,14 @@ sub observe_rules {
         next unless $line =~ /^\s*(\d+):\s+from\s+(\S+)\s+(.*)$/;
         my ($pref, $from, $rest) = ($1, $2, $3);
         my $r = { pref => 0 + $pref, from => $from, raw => $line };
-        if ($rest =~ /^lookup\s+(\S+)/) {
+        if ($rest =~ /\blookup\s+(\S+)/) {
             $r->{action} = 'lookup';
             $r->{table} = $1;
-        } elsif ($rest =~ /^unreachable\b/) {
+        } elsif ($rest =~ /\bunreachable\b/) {
             $r->{action} = 'unreachable';
-        } elsif ($rest =~ /^blackhole\b/) {
+        } elsif ($rest =~ /\bblackhole\b/) {
             $r->{action} = 'blackhole';
-        } elsif ($rest =~ /^prohibit\b/) {
+        } elsif ($rest =~ /\bprohibit\b/) {
             $r->{action} = 'prohibit';
         } else {
             $r->{action} = 'other';

@@ -29,7 +29,8 @@ is($h->{reachability}, 'unverified', 'reachability never inferred from a route')
 # Shadow: a pre-policy rule that matches the source.
 my $state = read_json("$f->{dir}/state.json");
 push @{ $state->{rules} }, {
-    pref => 10410, from => '2001:db8:a000::/56', action => 'lookup', table => '41913',
+    pref => 10410, from => 'all', extra => 'fwmark 0x1',
+    action => 'lookup', table => '41913',
 };
 write_json("$f->{dir}/state.json", $state);
 $r = run_cli($f, 'status', '--json');

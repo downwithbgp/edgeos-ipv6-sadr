@@ -511,6 +511,7 @@ sub reconcile {
     my $lock = $self->_lock();
     my $ok = 0;
     my $last_err = '';
+    my $last_gen = '';
     eval {
         for my $attempt (1 .. 3) {
             # Desired state is re-read under the lock. A stale snapshot is
@@ -518,6 +519,7 @@ sub reconcile {
             my $desired = ref($arg) eq 'HASH'
                 ? $self->validate_desired($arg)
                 : $self->read_desired($mode);
+            $last_gen = $desired->{generation} // '';
             my $owned = $self->owned_state();
             my $obs = $self->observe($desired, $owned);
             my $exp = $self->build_expected($desired, $obs);
@@ -570,8 +572,7 @@ sub reconcile {
     if ($@) {
         $last_err = $@;
         $last_err =~ s/\s+$//;
-        my $gen = eval { ref($arg) eq 'HASH' ? $arg->{generation} : undef } // '';
-        eval { $self->write_status({ state => 'failed', generation => $gen, error => $last_err }); };
+        eval { $self->write_status({ state => 'failed', generation => $last_gen, error => $last_err }); };
     }
     close $lock;
     die $last_err if length $last_err;

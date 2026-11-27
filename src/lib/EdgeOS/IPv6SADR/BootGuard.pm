@@ -89,12 +89,22 @@ sub boot_guard {
         }
     } @{ $parsed->{sources} };
 
-    # Intent is written before any mutation, so a interrupted guard install
-    # remains attributable and an orphan can be cleaned only from this tuple.
+    # Intent is additive: a later boot-guard run must not lose ownership of
+    # guards installed earlier. Only successful reconciliation prunes tuples.
+    my $previous = $self->read_boot_intent();
+    my (%seen, @all_guards);
+    for my $guard (@{ $previous->{guards} // [] }, @guards) {
+        next unless defined $guard->{pref} && defined $guard->{from};
+        my $copy = { pref => $guard->{pref}, from => $guard->{from},
+                     action => $guard->{action} // 'unreachable' };
+        my $key = join('|', $copy->{pref}, $copy->{from}, $copy->{action});
+        next if $seen{$key}++;
+        push @all_guards, $copy;
+    }
     $self->write_boot_intent({
         config     => $config,
         generation => $parsed->{generation},
-        guards     => \@guards,
+        guards     => \@all_guards,
     });
 
     my $obs = $self->observe_rules();

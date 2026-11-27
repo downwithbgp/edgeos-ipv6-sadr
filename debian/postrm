@@ -6,6 +6,7 @@ case "$1" in
     remove|purge)
         SYSTEMCTL=${EDGEOS_IPV6_SADR_SYSTEMCTL:-systemctl}
         if command -v "$SYSTEMCTL" >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            "$SYSTEMCTL" stop edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
             "$SYSTEMCTL" disable edgeos-ipv6-sadr-guard.service \
                 edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
             "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true

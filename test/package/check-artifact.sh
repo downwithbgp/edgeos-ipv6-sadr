@@ -24,7 +24,8 @@ for field in "Package: edgeos-ipv6-sadr" "Architecture: all"; do
 done
 
 listing=$(mktemp)
-trap 'rm -f "$listing" "$TMP/list" 2>/dev/null || true' EXIT
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/sadr-artifact.XXXXXX")
+trap 'rm -rf "$listing" "$TMP"' EXIT
 dpkg-deb -c "$DEB" >"$listing"
 for path in \
     ./opt/vyatta/sbin/vyatta-ipv6-sadr \
@@ -61,7 +62,6 @@ else
     ok "package does not contain router configuration"
 fi
 
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/sadr-artifact.XXXXXX")
 dpkg-deb -x "$DEB" "$TMP"
 if PERL5LIB="$TMP/usr/share/perl5" perl -e '
     require "EdgeOS/IPv6SADR.pm";
@@ -77,11 +77,13 @@ else
 fi
 rm -rf "$TMP"
 
-if dpkg-deb -I "$DEB" | grep -q 'preinst'; then
-    ok "package carries maintainer scripts"
-else
-    bad "package is missing maintainer scripts"
-fi
+for script in preinst postinst prerm postrm; do
+    if dpkg-deb -I "$DEB" | grep -q "$script"; then
+        ok "package carries $script"
+    else
+        bad "package is missing $script"
+    fi
+done
 
 echo
 if [ "$FAIL" -ne 0 ]; then

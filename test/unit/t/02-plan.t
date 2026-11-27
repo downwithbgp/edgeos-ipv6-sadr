@@ -142,6 +142,32 @@ my $plan2 = $s->plan($d, $applied_obs, $owned, $exp);
 is(JSON::PP->new->canonical->encode($plan), JSON::PP->new->canonical->encode($plan2),
     'planning is deterministic');
 
+# Staging pair B is selected when slot A is absent.
+my $slot_obs = dclone($applied_obs);
+@{ $slot_obs->{rules} } = grep {
+    !($_->{from} eq $src && ($_->{pref} == $base || $_->{pref} == $base + 1))
+} @{ $slot_obs->{rules} };
+push @{ $slot_obs->{rules} },
+    rule($base + 2, $src, 'lookup', table => 10000),
+    rule($base + 3, $src, 'lookup', table => 10001);
+my $slot_exp = $s->build_expected($d, $slot_obs);
+is($slot_exp->{sources}{$src}{slot}, 2, 'staging pair B is selected');
+my $slot_plan = $s->plan($d, $slot_obs, $owned, $slot_exp);
+is_deeply($slot_plan, [], 'staging pair B plan is empty');
+
+my $conflict_obs = dclone($slot_obs);
+@{ $conflict_obs->{rules} } = map {
+    ($_->{from} eq $src && ($_->{pref} == $base + 2 || $_->{pref} == $base + 3))
+        ? { %$_, table => 19999 }
+        : $_
+} @{ $conflict_obs->{rules} };
+push @{ $conflict_obs->{rules} },
+    rule($base, $src, 'lookup', table => 19999),
+    rule($base + 1, $src, 'lookup', table => 19999);
+my $conflict_exp = $s->build_expected($d, $conflict_obs);
+ok(scalar(grep { /two non-matching rule pairs/ } @{ $conflict_exp->{conflicts} }),
+    'non-matching rule pairs produce a conflict');
+
 # Ownership refusals never delete foreign state.
 my $foreign_obs = dclone($obs);
 $foreign_obs->{tables}{10001} = { table => 10001, exists => 1, routes => [

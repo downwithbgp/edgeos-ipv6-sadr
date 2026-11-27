@@ -152,4 +152,10 @@ ok(state_route(read_json("$f->{dir}/state.json"), 10001, '2001:db8:dead::/64'),
         'new generation provider lookup installed');
 }
 
+my $api_fail = temp_env(config => {});
+$api_fail->{env}{IPV6_SADR_API} = '/bin/false';
+my $af = run_cli($api_fail, 'validate-working');
+is($af->{rc}, 1, 'API root failure is refused');
+like($af->{err}, qr/cannot prove the protocols root/, 'API failure is a hard failure');
+
 done_testing();

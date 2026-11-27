@@ -10,7 +10,7 @@ its own releases once an installable package exists.
 - Production Perl reconciler with native `protocols ipv6-sadr`, terminal/provider guards,
   active/staging pairs, ownership checks, health, early boot guard, monitor and CLI.
 - Native configuration/op templates and systemd monitor/boot-guard units.
-- 591 unit/property/failure assertions and a 145-assertion generic-Linux namespace phase with
+- 599 unit/property/failure assertions and a 145-assertion generic-Linux namespace phase with
   packet-path, established-flow and transition coverage.
 - Debian package with firmware/kernel preinst guard, removal refusal, reproducible build and
   lifecycle/artifact checks.

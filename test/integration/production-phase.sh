@@ -249,7 +249,9 @@ prod_flow_test() { # <desc> <client-mode> <port>
 }
 
 prod_monitor_start() {
-    run er env \
+    # Launch directly: backgrounding the shell `run` function would leave the
+    # real ip-ns/perl monitor as an orphan that no stop can reliably reap.
+    ip netns exec sadr-er env \
         PERL5LIB="$ROOT/src/lib" \
         IPV6_SADR_API="$ROOT/test/unit/fake/fake_api.py" \
         IPV6_SADR_IP=ip \
@@ -265,9 +267,21 @@ prod_monitor_start() {
 
 prod_monitor_stop() {
     [ -n "$PROD_MON_PID" ] || return 0
-    kill "$PROD_MON_PID" 2>/dev/null || true
-    wait "$PROD_MON_PID" 2>/dev/null || true
+    local pid=$PROD_MON_PID
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 30); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        kill "$child" 2>/dev/null || true
+    done
     PROD_MON_PID=""
+    sleep 0.5
 }
 
 prod_wait_table() { # <table> <substring>

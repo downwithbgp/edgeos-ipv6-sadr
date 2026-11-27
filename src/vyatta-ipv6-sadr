@@ -211,6 +211,13 @@ if ($command eq 'route') {
         print STDERR "invalid source address: $err\n";
         exit 2;
     }
+    my $dst_addr = eval { $sadr->parse_addr($dst) };
+    if (!$dst_addr) {
+        my $err = $@;
+        $err =~ s/\s+$//;
+        print STDERR "invalid destination address: $err\n";
+        exit 2;
+    }
     my $desired = eval { $sadr->read_desired($mode) };
     if (!$desired) {
         my $err = $@;
@@ -229,7 +236,7 @@ if ($command eq 'route') {
     }
     my $lookup = $sadr->route_lookup($src, $dst);
     $lookup->{policy} = $match ? $match->{name} : undef;
-    $lookup->{table} = $match ? $match->{table} : $lookup->{table};
+    $lookup->{policy_table} = $match ? $match->{table} : undef;
     if ($opt{json}) {
         json_out($lookup);
     } else {
@@ -238,7 +245,9 @@ if ($command eq 'route') {
                 . ($lookup->{via} // 'connected')
                 . ($lookup->{dev} ? " dev $lookup->{dev}" : '')
                 . " table " . ($lookup->{table} // 'main')
-                . ($match ? " policy $match->{name}" : " (no constrained policy)")
+                . ($match
+                    ? " policy $match->{name} (expected table $match->{table})"
+                    : " (no constrained policy)")
                 . "\n";
         } else {
             print "source $src -> $dst: unreachable"
