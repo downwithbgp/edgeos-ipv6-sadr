@@ -14,6 +14,7 @@ AUTH_FILE=""
 TEST_ID=""
 ADAPTER=""
 CLEANUP=""
+INSTALL=""
 DEVICE_FP=""
 NOT_AFTER=""
 OUT=""
@@ -42,6 +43,7 @@ usage: qualification/profile.sh --profile plan|observe|canary|maintenance|isolat
   --device-fingerprint HEX    expected stable device fingerprint (mutating profiles)
   --adapter PATH              executable R1 adapter bound by the authorization (canary/maintenance)
   --cleanup PATH              device-local cleanup script bound by the authorization
+  --install PATH              device-local install wrapper bound by the authorization
   --out DIR                   results directory
 
 Default profile is Plan, which never contacts a router. Observe is read-only and
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
         --device-fingerprint) [ $# -ge 2 ] || usage; DEVICE_FP=$2; shift 2 ;;
         --adapter) [ $# -ge 2 ] || usage; ADAPTER=$2; shift 2 ;;
         --cleanup) [ $# -ge 2 ] || usage; CLEANUP=$2; shift 2 ;;
+        --install) [ $# -ge 2 ] || usage; INSTALL=$2; shift 2 ;;
         --out) [ $# -ge 2 ] || usage; OUT=$2; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown option: $1" >&2; usage ;;
@@ -197,16 +200,22 @@ export SADR_QUAL_OUT="$OUT"
     if [ "$PROFILE" = "canary" ] || [ "$PROFILE" = "maintenance" ]; then
         if [ -z "$ADAPTER" ] || [ ! -f "$ADAPTER" ]; then echo "FAIL: --adapter required" >&2; exit 2; fi
         if [ -z "$CLEANUP" ] || [ ! -f "$CLEANUP" ]; then echo "FAIL: --cleanup required" >&2; exit 2; fi
+        if [ -z "$INSTALL" ] || [ ! -f "$INSTALL" ]; then echo "FAIL: --install required" >&2; exit 2; fi
         ADAPTER_SHA=$(sha256sum "$ADAPTER" | awk '{print $1}')
         CLEANUP_SHA=$(sha256sum "$CLEANUP" | awk '{print $1}')
+        INSTALL_SHA=$(sha256sum "$INSTALL" | awk '{print $1}')
         AUTH_ADAPTER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["adapter_sha256"])' <<<"$auth_json")
         AUTH_CLEANUP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cleanup_sha256"])' <<<"$auth_json")
+        AUTH_INSTALL=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["install_sha256"])' <<<"$auth_json")
         [ "$AUTH_ADAPTER" = "$ADAPTER_SHA" ] || { echo "FAIL: adapter hash mismatch" >&2; exit 2; }
         [ "$AUTH_CLEANUP" = "$CLEANUP_SHA" ] || { echo "FAIL: cleanup hash mismatch" >&2; exit 2; }
+        [ "$AUTH_INSTALL" = "$INSTALL_SHA" ] || { echo "FAIL: install hash mismatch" >&2; exit 2; }
         export SADR_QUAL_ADAPTER_PATH="$ADAPTER"
         export SADR_QUAL_ADAPTER_SHA256="$ADAPTER_SHA"
         export SADR_QUAL_CLEANUP_PATH="$CLEANUP"
         export SADR_QUAL_CLEANUP_SHA256="$CLEANUP_SHA"
+        export SADR_QUAL_INSTALL_PATH="$INSTALL"
+        export SADR_QUAL_INSTALL_SHA256="$INSTALL_SHA"
         if [ "$PROFILE" = "maintenance" ]; then cmdvar=SADR_QUAL_MAINTENANCE_CMD; else cmdvar=SADR_QUAL_CANARY_CMD; fi
         adapter_cmd=${!cmdvar:-}
         if [ -n "$adapter_cmd" ]; then

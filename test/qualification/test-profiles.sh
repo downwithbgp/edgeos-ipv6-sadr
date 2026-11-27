@@ -35,9 +35,12 @@ esac
 SH
 # shellcheck disable=SC2016 # the written script intentionally contains "$1"
 printf '#!/bin/bash\ntouch "$1"\n' >"$CLEANUP_SCRIPT"
-chmod +x "$ADAPTER" "$CLEANUP_SCRIPT"
+INSTALL_SCRIPT="$TMP/install.sh"
+printf '#!/bin/bash\nexit 0\n' >"$INSTALL_SCRIPT"
+chmod +x "$ADAPTER" "$CLEANUP_SCRIPT" "$INSTALL_SCRIPT"
 ADAPTER_SHA=$(sha256sum "$ADAPTER" | awk '{print $1}')
 CLEANUP_SHA=$(sha256sum "$CLEANUP_SCRIPT" | awk '{print $1}')
+INSTALL_SHA=$(sha256sum "$INSTALL_SCRIPT" | awk '{print $1}')
 
 run_plan() { # profile expected-step
     local profile=$1 expected=$2 out="$TMP/$1"
@@ -65,9 +68,9 @@ expect_fail() { # description command...
 
 write_auth() { # file profile target_class [overrides as JSON object]
     local file=$1 profile=$2 target=$3 overrides=${4:-}
-    python3 - "$file" "$profile" "$target" "$overrides" "$DEV_FP" "$ADAPTER_SHA" "$CLEANUP_SHA" <<'PY'
+    python3 - "$file" "$profile" "$target" "$overrides" "$DEV_FP" "$ADAPTER_SHA" "$CLEANUP_SHA" "$INSTALL_SHA" <<'PY'
 import json, sys
-file, profile, target, overrides, fp, adapter, cleanup = sys.argv[1:8]
+file, profile, target, overrides, fp, adapter, cleanup, install = sys.argv[1:9]
 doc = {
     "device_id": "ER-X-TEST",
     "device_fingerprint": fp,
@@ -83,13 +86,14 @@ doc = {
 if profile in ("canary", "maintenance"):
     doc["adapter_sha256"] = adapter
     doc["cleanup_sha256"] = cleanup
+    doc["install_sha256"] = install
 doc.update(json.loads(overrides) if overrides else {})
 with open(file, "w", encoding="utf-8") as fh:
     json.dump(doc, fh)
 PY
 }
 
-CANARY_ARGS=(--adapter "$ADAPTER" --cleanup "$CLEANUP_SCRIPT" --device-fingerprint "$DEV_FP")
+CANARY_ARGS=(--adapter "$ADAPTER" --cleanup "$CLEANUP_SCRIPT" --install "$INSTALL_SCRIPT" --device-fingerprint "$DEV_FP")
 
 run_plan observe observe
 run_plan canary canary
@@ -127,6 +131,10 @@ expect_fail "canary requires --cleanup" \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
         --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
         --test-id R1-guard-only --adapter "$ADAPTER" --device-fingerprint "$DEV_FP"
+expect_fail "canary requires --install" \
+    bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \
+        --router admin@router.invalid --device-id ER-X-TEST --authorization "$AUTH" \
+        --test-id R1-guard-only --adapter "$ADAPTER" --cleanup "$CLEANUP_SCRIPT" --device-fingerprint "$DEV_FP"
 expect_fail "canary command must reference the bound adapter" \
     env SADR_QUAL_CANARY_CMD='bash /tmp/not-the-bound-adapter.sh' \
     bash "$ROOT/qualification/profile.sh" --profile canary --execute --authorize --out "$TMP/out" \

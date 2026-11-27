@@ -72,6 +72,7 @@ qualification/profile.sh --profile canary --execute --authorize \
   --router admin@router --device-id ER-X-TEST --test-id R1-guard-only \
   --device-fingerprint <64-hex> --adapter qualification/adapters/r1-canary.sh \
   --cleanup qualification/adapters/r1-cleanup.sh \
+  --install qualification/adapters/r1-install.sh \
   --authorization /secure/r1-authorization.json --out "$TMPDIR/canary"
 ```
 

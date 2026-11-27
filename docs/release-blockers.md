@@ -22,8 +22,8 @@ hardware-qualified product.
 | CI on the Phase IV head | PASS | `5da9759`: push run 46020441263 and PR run 46020448297, all jobs success on `checkout@v7.0.1` |
 | Phase V-A CI | PASS | `e5ff8fb`: push run 46028355899 and PR run 46028363022, all jobs success; R1 simulation in the netns job |
 | Production read-only baseline | PASS | sanitized inventory; no mutation |
-| Production canary R1 (off-device readiness) | PASS | adapter/cleanup bound by SHA-256 (candidate hashes tested); qualification 42 + 13 assertions; generic-Linux A/B/A 8/8; netns 145/0 |
-| Production canary R1 (target execution) | BLOCKED | ready for authorization; needs root/CAP_NET_ADMIN on the controller and a maintainer-set `not_after` plus approval |
+| Production canary R1 (off-device readiness) | PASS | adapter/cleanup bound by SHA-256 (candidate hashes tested); qualification 42 + 19 assertions; install/cleanup lock and closed-state tests; generic-Linux A/B/A 8/8; netns 145/0 |
+| Production canary R1 (target execution) | ABORTED (pre-mutation) | first attempt aborted at the adapter self-hash before any router contact; no rule installed; corrected hashes and targeted tests pass; retry requires renewed authorization |
 | Production package installation | BLOCKED | installation side effects and authorization not approved |
 | Configuration transaction/rollback | BLOCKED | target engine behavior unverified; simulation only |
 | Boot ordering/failure propagation | BLOCKED | no target boot trace; guard failure does not block router by design |

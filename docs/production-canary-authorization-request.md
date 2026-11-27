@@ -169,6 +169,7 @@ sudo -E \
     --test-id R1-guard-only --authorization docs/r1-authorization-candidate.json \
     --adapter qualification/adapters/r1-canary.sh \
     --cleanup qualification/adapters/r1-cleanup.sh \
+    --install qualification/adapters/r1-install.sh \
     --out /secure/r1-run
 ```
 
@@ -176,10 +177,10 @@ sudo -E \
 
 | Artifact | SHA-256 |
 |---|---|
-| `qualification/adapters/r1-canary.sh` | `4645f199df73d78b80687f19bb1246aba48259ec3130d61bf1a76b313e75cca4` |
-| `qualification/adapters/r1-cleanup.sh` | `a32e1d8c97bf88fe3e072ccbd23afca6d61c186170288d1922ce40a379d54843` |
+| `qualification/adapters/r1-canary.sh` | `f89d91e3e603c8dd37ab476ae8fbc3c7654386e5660b75389825d3fec0a9bd12` |
+| `qualification/adapters/r1-cleanup.sh` | `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883` |
 
-Off-device evidence: qualification plan/profile/cleanup tests pass (42 + 13 assertions); the
+Off-device evidence: qualification plan/profile/cleanup tests pass (42 + 19 assertions); the
 generic-Linux A/B/A simulation passes 8/8 and the full netns suite 145/0. These are generic-Linux
 results, not EdgeOS evidence; the target run is what R1 establishes.
 

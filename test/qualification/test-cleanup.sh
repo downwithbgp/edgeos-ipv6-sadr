@@ -16,6 +16,11 @@ case "$*" in
     if [ "${FAKE_SHOW_MODE:-ok}" = "fail" ]; then exit 2; fi
     cat "$state" 2>/dev/null
     ;;
+  "-6 rule add from "*" unreachable pref "*)
+    sel=$5; pref=$8
+    if [ "${FAKE_ADD_MODE:-ok}" = "fail" ]; then exit 2; fi
+    printf '%s:\tfrom %s unreachable\n' "$pref" "$sel" >>"$state"
+    ;;
   "-6 rule del from "*" unreachable pref "*)
     pref=$8
     case "${FAKE_DEL_MODE:-ok}" in
@@ -106,6 +111,8 @@ run_adapter_reject() { # adapter-sha cleanup-path cleanup-sha
     SADR_QUAL_DEVICE_FINGERPRINT="$(printf x | sha256sum | awk '{print $1}')" \
     SADR_QUAL_ADAPTER_SHA256="$1" SADR_QUAL_CLEANUP_PATH="$2" \
     SADR_QUAL_CLEANUP_SHA256="$3" \
+    SADR_QUAL_INSTALL_PATH="$ROOT/qualification/adapters/r1-install.sh" \
+    SADR_QUAL_INSTALL_SHA256="$(sha256sum "$ROOT/qualification/adapters/r1-install.sh" | awk '{print $1}')" \
         bash "$adapter" --execute --out "$TMP/reject" 2>&1 || true
 }
 out=$(run_adapter_reject "$(printf y | sha256sum | awk '{print $1}')" "$cleanup" "$cleanup_sha")
@@ -123,11 +130,85 @@ esac
 candidate="$ROOT/docs/r1-authorization-candidate.json"
 cand_adapter=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adapter_sha256"])' "$candidate")
 cand_cleanup=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cleanup_sha256"])' "$candidate")
-if [ "$cand_adapter" = "$adapter_sha" ] && [ "$cand_cleanup" = "$cleanup_sha" ]; then
+install="$ROOT/qualification/adapters/r1-install.sh"
+install_sha=$(sha256sum "$install" | awk '{print $1}')
+cand_install=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["install_sha256"])' "$candidate")
+if [ "$cand_adapter" = "$adapter_sha" ] && [ "$cand_cleanup" = "$cleanup_sha" ] && [ "$cand_install" = "$install_sha" ]; then
     echo "PASS: authorization candidate hashes match the executable files"; pass=$((pass + 1))
 else
     echo "FAIL: authorization candidate hashes drifted from the executable files" >&2
     fail=$((fail + 1))
+fi
+
+# Device-local install/cleanup coordination: deadline, closed window, repeat.
+now=$(date -u +%s)
+RUNDIR="$TMP/rundir"
+mkdir -p "$RUNDIR"
+: >"$RUNDIR/cleanup.log"
+: >"$TMP/state"
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" \
+    bash "$ROOT/qualification/adapters/r1-install.sh" fd42:901::a1 21031 $((now + 60)) "$RUNDIR"
+rc=$?
+set -e
+if [ "$rc" -eq 0 ] && grep -q '^21031:' "$TMP/state"; then
+    echo "PASS: install adds the exact rule before the deadline"; pass=$((pass + 1))
+else
+    echo "FAIL: install did not add the rule (rc=$rc)" >&2; fail=$((fail + 1))
+fi
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" \
+    bash "$ROOT/qualification/adapters/r1-cleanup.sh" fd42:901::a1 21031 "$RUNDIR/cleanup.log" "$RUNDIR"
+rc=$?
+set -e
+if [ "$rc" -eq 0 ] && [ ! -s "$TMP/state" ] && [ -e "$RUNDIR/closed" ]; then
+    echo "PASS: cleanup deletes the rule and closes the window"; pass=$((pass + 1))
+else
+    echo "FAIL: cleanup did not close/delete (rc=$rc)" >&2; fail=$((fail + 1))
+fi
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" \
+    bash "$ROOT/qualification/adapters/r1-install.sh" fd42:901::a1 21031 $((now + 60)) "$RUNDIR"
+rc=$?
+set -e
+if [ "$rc" -eq 4 ] && [ ! -s "$TMP/state" ]; then
+    echo "PASS: install refuses after the window closed"; pass=$((pass + 1))
+else
+    echo "FAIL: install was not refused after close (rc=$rc)" >&2; fail=$((fail + 1))
+fi
+RUNDIR2="$TMP/rundir2"
+mkdir -p "$RUNDIR2"; : >"$RUNDIR2/cleanup.log"; : >"$TMP/state"
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" \
+    bash "$ROOT/qualification/adapters/r1-install.sh" fd42:901::a1 21031 $((now - 10)) "$RUNDIR2"
+rc=$?
+set -e
+if [ "$rc" -eq 5 ] && [ ! -s "$TMP/state" ]; then
+    echo "PASS: install refuses after the device deadline"; pass=$((pass + 1))
+else
+    echo "FAIL: install was not refused after the deadline (rc=$rc)" >&2; fail=$((fail + 1))
+fi
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" \
+    bash "$ROOT/qualification/adapters/r1-cleanup.sh" fd42:901::a1 21031 "$RUNDIR2/cleanup.log" "$RUNDIR2"
+rc=$?
+set -e
+if [ "$rc" -eq 0 ]; then
+    echo "PASS: repeated cleanup is idempotent"; pass=$((pass + 1))
+else
+    echo "FAIL: repeated cleanup failed (rc=$rc)" >&2; fail=$((fail + 1))
+fi
+RUNDIR3="$TMP/rundir3"
+mkdir -p "$RUNDIR3"; : >"$RUNDIR3/cleanup.log"; : >"$TMP/state"
+set +e
+SADR_IP_BIN="$TMP/fake-ip" FAKE_STATE="$TMP/state" FAKE_ADD_MODE=fail \
+    bash "$ROOT/qualification/adapters/r1-install.sh" fd42:901::a1 21031 $((now + 60)) "$RUNDIR3"
+rc=$?
+set -e
+if [ "$rc" -eq 6 ] && [ ! -s "$TMP/state" ]; then
+    echo "PASS: install partial failure is reported"; pass=$((pass + 1))
+else
+    echo "FAIL: install partial failure was not reported (rc=$rc)" >&2; fail=$((fail + 1))
 fi
 
 echo "cleanup tests: pass=$pass fail=$fail"

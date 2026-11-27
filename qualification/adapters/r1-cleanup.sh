@@ -8,16 +8,26 @@
 # idempotent (an absent rule is success) and verifies the deletion. An
 # unreadable rule table is a failure, not an absent rule.
 #
-# usage: r1-cleanup.sh SELECTOR PREF [LOG]
-# exit:  0 deleted or already absent; 3 foreign/ambiguous rule; 4 delete failed;
-#        5 the rule table could not be read or verified
+# usage: r1-cleanup.sh SELECTOR PREF [LOG] [RUNDIR]
+# exit:  0 deleted or already absent; 2 lock/closed failure; 3 foreign/ambiguous
+#        rule; 4 delete failed; 5 the rule table could not be read or verified;
+#        7 cleanup lock timeout
 set -u
 SELECTOR=${1:?selector required}
 PREF=${2:?priority required}
 LOG=${3:-/tmp/sadr-r1-cleanup.log}
+RUNDIR=${4:-}
 IP=${SADR_IP_BIN:-ip} # test seam: a fake ip can be substituted off-device
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
+
+# Close the device-local window under the same lock the installer uses, so no
+# mutation can be added after cleanup has run.
+if [ -n "$RUNDIR" ]; then
+    exec 9>"$RUNDIR/lock" || { log "cleanup: cannot open lock"; exit 2; }
+    flock -w 10 9 || { log "cleanup: lock timeout"; exit 7; }
+    : >"$RUNDIR/closed" || { log "cleanup: cannot close the window"; exit 2; }
+fi
 
 # Capture the rule table; an unreadable table is exit 5, never "absent".
 read_rules() {
