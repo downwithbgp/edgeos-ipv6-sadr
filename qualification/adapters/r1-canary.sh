@@ -15,7 +15,7 @@
 # The result is written atomically to $OUT/adapter-result.json. Stdout is not
 # the authoritative result: SSH banners and incidental command output are kept
 # in separate logs and can never corrupt the structured result.
-# shellcheck disable=SC2317 # fail()/err_trap() terminate; shellcheck marks fallback paths unreachable
+# shellcheck disable=SC2317,SC2329 # trap/fallback functions invoked indirectly; shellcheck cannot see all call paths
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=/dev/null

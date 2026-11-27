@@ -49,8 +49,8 @@ deployment:
   the preflight and post-A1 checks compare protected rules, table `41913`, default routes, BGP and
   available memory.
 
-Manifest: `c94ddf2a493bea562d9a1d8b76a52c3bf7ccbf96b8a7c22f7f9a5a7118db2c7a`.
-Frozen device executables: adapter `7644a897e0ce329f5f44235cad05012ff50294be3de2705003c30a4bab9fbbf6`,
+Manifest: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
+Frozen device executables: adapter `14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc`,
 cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
 install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.
 
@@ -62,7 +62,7 @@ mutation, timer, runtime directory or namespace was created.
 
 ## 4. Official A1 baseline (Stage 0–2) — EXECUTED, BLOCKED BY THE PRODUCTION FIREWALL
 
-Run outside the repository; UTC window `2026-11-27T18:23:02Z` to `18:23:50Z`.
+Run outside the repository; UTC window `2026-11-27T18:44:49Z` to `18:45:37Z`.
 
 | Stage | Result | Observation |
 |---|---|---|
@@ -74,8 +74,8 @@ Run outside the repository; UTC window `2026-11-27T18:23:02Z` to `18:23:50Z`.
 
 Packet-path observations from the retained captures:
 
-- E1 emitted the 20 matching + 10 control UDP probes toward `<D>`; the capture contains 32 frames
-  (30 UDP plus two ICMPv6 neighbour messages). Every UDP probe used the ER-X's Ethernet MAC as the
+- E1 emitted the 20 matching + 10 control UDP probes toward `<D>`; the capture contains 33 frames
+  (30 UDP plus three ICMPv6 neighbour messages). Every UDP probe used the ER-X's Ethernet MAC as the
   next hop and hop limit 64; no direct E1→E2 MAC frame was observed.
 - E2 received **0** frames and the destination listener logged **0** sources.
 - The matching/control probes reached the ER-X ingress but were not forwarded.
@@ -85,9 +85,9 @@ Firewall evidence (read-only):
 - Hook mapping: ingress `switch0.65` → `SERVERv6_IN`.
 - Rule `SERVERv6_IN-30` drops destination addresses in the `IPV6_LOCAL_NETS` set. The test
   destination is in the server-VLAN `/64`, so it is in that set.
-- Exact counter: **77 → 107 packets (+30)** across the final A1 run (the first official A1 moved
-  47 → 77; the earlier 1-matching/1-control diagnostic moved the same counter 45 → 47). The drop is
-  therefore the production IPv6 firewall, not an ND, capture or harness failure.
+- Exact counter: **107 → 137 packets (+30)** across the final A1 run (the earlier official runs
+  moved 47 → 77 and 77 → 107; the 1-matching/1-control diagnostic moved the same counter 45 → 47).
+  The drop is therefore the production IPv6 firewall, not an ND, capture or harness failure.
 
 The adapter's automated invariant check ran before the delivery assertion and passed (diagnostics:
 `A1 invariants pass: protected rules, table 41913, BGP, default routes and memory unchanged`).
