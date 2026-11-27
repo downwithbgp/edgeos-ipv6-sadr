@@ -27,9 +27,14 @@ except (OSError, ValueError) as exc:
     fail(exc, 2)
 
 for key in ("device_id", "profile", "target_class", "test_ids",
-            "max_duration_seconds", "approved_mutation_scope", "recovery", "not_after"):
+            "max_duration_seconds", "approved_mutation_scope", "recovery",
+            "not_after", "device_fingerprint"):
     if key not in auth:
         fail(f"missing {key}", 3)
+if args.profile in ("canary", "maintenance"):
+    for key in ("adapter_sha256", "cleanup_sha256"):
+        if key not in auth:
+            fail(f"missing {key}", 3)
 
 if auth["profile"] != args.profile:
     fail("profile mismatch", 4)
@@ -69,6 +74,12 @@ if remaining < duration:
     fail(f"authorization expires in {int(remaining)}s, shorter than "
          f"max_duration_seconds={duration}", 15)
 
+for key in ("device_fingerprint", "adapter_sha256", "cleanup_sha256"):
+    if key in auth:
+        value = auth[key]
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            fail(f"{key} must be 64 lowercase hex characters", 14)
+
 if "artifact_sha256" in auth:
     value = auth["artifact_sha256"]
     if not isinstance(value, str):
@@ -85,6 +96,7 @@ if args.artifact and expected:
 
 print(json.dumps({
     "device_id": auth["device_id"],
+    "device_fingerprint": auth["device_fingerprint"],
     "profile": auth["profile"],
     "target_class": auth["target_class"],
     "test_ids": auth["test_ids"],
@@ -94,4 +106,6 @@ print(json.dumps({
     "recovery": auth["recovery"],
     "not_after": auth["not_after"],
     "artifact_sha256": expected,
+    "adapter_sha256": auth.get("adapter_sha256", ""),
+    "cleanup_sha256": auth.get("cleanup_sha256", ""),
 }, sort_keys=True))

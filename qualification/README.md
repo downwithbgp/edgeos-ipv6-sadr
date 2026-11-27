@@ -10,9 +10,14 @@ authorization file.
 - Default profile is `plan`: no SSH contact, no package install, no configuration commit.
 - `--execute` always requires `--authorize`.
 - `observe` is read-only and needs no authorization file.
-- `canary` and `maintenance` require `--test-id` plus `--authorization` JSON whose `test_ids`
-  contains that id, with an unexpired `not_after` deadline; the validated duration, scope, recovery
-  and artifact hash are exported to the adapter rather than re-read from disk.
+- `canary` and `maintenance` require `--test-id`, `--device-fingerprint`, `--adapter` and
+  `--cleanup`, plus an authorization JSON whose `test_ids` contains that id and whose
+  `device_fingerprint`, `adapter_sha256` and `cleanup_sha256` match the supplied files. The validated
+  duration, scope, recovery, deadline and hashes are exported to the adapter, never re-read from
+  disk. Expiry is checked before mutation and must cover the whole run.
+- Canary/maintenance runs also require `SADR_QUAL_VERIFY_CMD`; a failed cleanup verification is a
+  recovery failure, never a pass. The approval record is an explicit maintainer-approved
+  authorization document; no cryptographic signing identity is implied or invented.
 - `isolated` additionally requires `target_class: isolated`, an `artifact_sha256`,
   `SADR_QUAL_ISOLATED=1`, `--router`, `--artifact` and `--config`, and a preflight match for the
   exact firmware family and `4.14.54-UBNT`.
@@ -39,15 +44,16 @@ authorization file.
 |---|---|---|
 | `plan` | Render the complete plan; **default** | none |
 | `observe` | Bounded read-only identity/RPDB/table/interface/systemd/resource baseline | none |
-| `canary` | One exact authorized synthetic experiment; no package install | requires an authorization file |
-| `maintenance` | Explicitly authorized disruptive test; no automatic reboot | requires an authorization file |
+| `canary` | One exact authorized synthetic experiment; no package install | authorization file + bound adapter/cleanup |
+| `maintenance` | Explicitly authorized disruptive test; no automatic reboot | authorization file + bound adapter/cleanup |
 | `isolated` | Original full 22-step dedicated-hardware qualification | full isolated matrix |
 
 Canary and maintenance require `--test-id` plus `--authorization` JSON with exact `device_id`,
-`profile`, `target_class: production`, `test_ids` (including the requested test id),
-`max_duration_seconds`, `approved_mutation_scope`, `recovery` and an unexpired `not_after`.
-Isolated requires `target_class: isolated`, an `artifact_sha256` and `SADR_QUAL_ISOLATED=1`. A
-missing/mismatched field aborts before any mutation. There is no generic production-safety bypass.
+`device_fingerprint`, `profile`, `target_class: production`, `test_ids` (including the requested test
+id), `max_duration_seconds`, `approved_mutation_scope`, `recovery`, an unexpired `not_after`,
+`adapter_sha256` and `cleanup_sha256`. Isolated requires `target_class: isolated`, a
+`device_fingerprint`, an `artifact_sha256` and `SADR_QUAL_ISOLATED=1`. A missing/mismatched field
+aborts before any mutation. There is no generic production-safety bypass.
 
 ## Usage
 
@@ -60,8 +66,12 @@ qualification/profile.sh --profile observe --execute --authorize \
   --router admin@router --out "$TMPDIR/observe"
 
 # One authorized synthetic canary (only after a scoped authorization exists).
+# The R1 concrete invocation, adapter and cleanup paths are in
+# docs/production-canary-authorization-request.md.
 qualification/profile.sh --profile canary --execute --authorize \
   --router admin@router --device-id ER-X-TEST --test-id R1-guard-only \
+  --device-fingerprint <64-hex> --adapter qualification/adapters/r1-canary.sh \
+  --cleanup qualification/adapters/r1-cleanup.sh \
   --authorization /secure/r1-authorization.json --out "$TMPDIR/canary"
 ```
 
@@ -125,7 +135,8 @@ Set these environment commands before `--execute`. Each command must print one J
 | `SADR_QUAL_BGP_CMD` | BGP internal-route mirroring/withdrawal/ECMP |
 | `SADR_QUAL_COEXIST_CMD` | Native firewall and VXLAN coexistence |
 | `SADR_QUAL_RESOURCES_CMD` | CPU/memory/throughput/recovery/boot measurements |
-| `SADR_QUAL_CLEANUP_CMD` | Restore configuration/package state and verify residue |
+| `SADR_QUAL_CLEANUP_CMD` | Delete only the exact authorized test objects |
+| `SADR_QUAL_VERIFY_CMD` | Mandatory for canary/maintenance: verify the cleanup left no residue |
 
 The adapter commands run on the controller. They may use `ssh`/`scp`/captures, but must return the
 JSON contract above. This keeps SADR-specific topology out of the controller while preserving
@@ -136,6 +147,8 @@ repeatable evidence collection.
 `test/qualification/test-plan.sh` runs plan mode and asserts the complete step matrix is present,
 statuses are `planned`, and no router contact is attempted. `test/qualification/test-profiles.sh`
 drives every profile plan, the authorization validator (deadline, device/profile/test-id/scope,
-duration bounds, artifact hash), the execution gates, cleanup on failure and interrupt, and the
-non-zero exit for a failed observe collection. Both are part of the repository's qualification
-checks.
+duration bounds, fingerprint and dependency hashes), the execution gates, cleanup verification,
+cleanup on failure and interrupt, and the non-zero exit for a failed observe collection.
+`test/qualification/test-cleanup.sh` tests the device cleanup script against a fake `ip` and the
+adapter plan/refusal paths. `test/integration/r1-canary-sim.sh` runs the A/B/A sequence and cleanup
+semantics in the privileged generic-Linux container. All are part of the qualification checks.

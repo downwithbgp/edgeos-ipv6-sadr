@@ -12,6 +12,10 @@ ARTIFACT=""
 CONFIG=""
 AUTH_FILE=""
 TEST_ID=""
+ADAPTER=""
+CLEANUP=""
+DEVICE_FP=""
+NOT_AFTER=""
 OUT=""
 AUTHORIZED=0
 MAXDUR=0
@@ -35,6 +39,9 @@ usage: qualification/profile.sh --profile plan|observe|canary|maintenance|isolat
   --artifact PATH             package under test (isolated)
   --config PATH               configuration command file (isolated)
   --authorization PATH        scoped authorization JSON (canary/maintenance/isolated)
+  --device-fingerprint HEX    expected stable device fingerprint (mutating profiles)
+  --adapter PATH              executable R1 adapter bound by the authorization (canary/maintenance)
+  --cleanup PATH              device-local cleanup script bound by the authorization
   --out DIR                   results directory
 
 Default profile is Plan, which never contacts a router. Observe is read-only and
@@ -58,6 +65,9 @@ while [ $# -gt 0 ]; do
         --artifact) [ $# -ge 2 ] || usage; ARTIFACT=$2; shift 2 ;;
         --config) [ $# -ge 2 ] || usage; CONFIG=$2; shift 2 ;;
         --authorization) [ $# -ge 2 ] || usage; AUTH_FILE=$2; shift 2 ;;
+        --device-fingerprint) [ $# -ge 2 ] || usage; DEVICE_FP=$2; shift 2 ;;
+        --adapter) [ $# -ge 2 ] || usage; ADAPTER=$2; shift 2 ;;
+        --cleanup) [ $# -ge 2 ] || usage; CLEANUP=$2; shift 2 ;;
         --out) [ $# -ge 2 ] || usage; OUT=$2; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown option: $1" >&2; usage ;;
@@ -151,15 +161,19 @@ command -v ssh >/dev/null 2>&1 || { echo "FAIL: ssh required" >&2; exit 2; }
 SCOPE=""
 RECOVERY=""
 ARTIFACT_SHA=""
+ADAPTER_SHA=""
+CLEANUP_SHA=""
 if [ "$PROFILE" != "observe" ]; then
     [ -n "$DEVICE_ID" ] || { echo "FAIL: --device-id required" >&2; exit 2; }
+    [ -n "$DEVICE_FP" ] || { echo "FAIL: --device-fingerprint required" >&2; exit 2; }
+    printf '%s' "$DEVICE_FP" | grep -Eq '^[0-9a-f]{64}$' || { echo "FAIL: --device-fingerprint must be 64 lowercase hex" >&2; exit 2; }
     [ -n "$AUTH_FILE" ] || { echo "FAIL: --authorization required" >&2; exit 2; }
     [ -f "$AUTH_FILE" ] || { echo "FAIL: authorization file not found" >&2; exit 2; }
     auth_args=(--file "$AUTH_FILE" --profile "$PROFILE" --device "$DEVICE_ID")
     if [ -n "$TEST_ID" ]; then auth_args+=(--test-id "$TEST_ID"); fi
     if [ -n "$ARTIFACT" ]; then auth_args+=(--artifact "$ARTIFACT"); fi
     # The validated authorization is consumed, never discarded: duration, scope,
-    # recovery and artifact hash come from it, not from re-reading the file.
+    # recovery, deadline, fingerprint and hashes come from it.
     if ! auth_json=$(python3 "$ROOT/qualification/authorization.py" "${auth_args[@]}"); then
         echo "FAIL: authorization rejected" >&2
         exit 2
@@ -168,10 +182,40 @@ if [ "$PROFILE" != "observe" ]; then
     SCOPE=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["approved_mutation_scope"])' <<<"$auth_json")
     RECOVERY=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["recovery"])' <<<"$auth_json")
     ARTIFACT_SHA=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["artifact_sha256"])' <<<"$auth_json")
+    NOT_AFTER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["not_after"])' <<<"$auth_json")
+    AUTH_FP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["device_fingerprint"])' <<<"$auth_json")
+    [ "$AUTH_FP" = "$DEVICE_FP" ] || { echo "FAIL: device fingerprint does not match the authorization" >&2; exit 2; }
+    export SADR_QUAL_ROUTER="$ROUTER"
+export SADR_QUAL_OUT="$OUT"
+    export SADR_QUAL_TEST_ID="$TEST_ID"
+    export SADR_QUAL_MAX_DURATION="$MAXDUR"
+    export SADR_QUAL_NOT_AFTER="$NOT_AFTER"
+    export SADR_QUAL_DEVICE_FINGERPRINT="$DEVICE_FP"
     export SADR_QUAL_APPROVED_SCOPE="$SCOPE"
     export SADR_QUAL_RECOVERY="$RECOVERY"
-    export SADR_QUAL_TEST_ID="$TEST_ID"
     if [ -n "$ARTIFACT_SHA" ]; then export SADR_QUAL_ARTIFACT_SHA256="$ARTIFACT_SHA"; fi
+    if [ "$PROFILE" = "canary" ] || [ "$PROFILE" = "maintenance" ]; then
+        if [ -z "$ADAPTER" ] || [ ! -f "$ADAPTER" ]; then echo "FAIL: --adapter required" >&2; exit 2; fi
+        if [ -z "$CLEANUP" ] || [ ! -f "$CLEANUP" ]; then echo "FAIL: --cleanup required" >&2; exit 2; fi
+        ADAPTER_SHA=$(sha256sum "$ADAPTER" | awk '{print $1}')
+        CLEANUP_SHA=$(sha256sum "$CLEANUP" | awk '{print $1}')
+        AUTH_ADAPTER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["adapter_sha256"])' <<<"$auth_json")
+        AUTH_CLEANUP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cleanup_sha256"])' <<<"$auth_json")
+        [ "$AUTH_ADAPTER" = "$ADAPTER_SHA" ] || { echo "FAIL: adapter hash mismatch" >&2; exit 2; }
+        [ "$AUTH_CLEANUP" = "$CLEANUP_SHA" ] || { echo "FAIL: cleanup hash mismatch" >&2; exit 2; }
+        export SADR_QUAL_ADAPTER_PATH="$ADAPTER"
+        export SADR_QUAL_ADAPTER_SHA256="$ADAPTER_SHA"
+        export SADR_QUAL_CLEANUP_PATH="$CLEANUP"
+        export SADR_QUAL_CLEANUP_SHA256="$CLEANUP_SHA"
+        if [ "$PROFILE" = "maintenance" ]; then cmdvar=SADR_QUAL_MAINTENANCE_CMD; else cmdvar=SADR_QUAL_CANARY_CMD; fi
+        adapter_cmd=${!cmdvar:-}
+        if [ -n "$adapter_cmd" ]; then
+            case "$adapter_cmd" in
+                *"$ADAPTER"*) ;;
+                *) echo "FAIL: the $PROFILE command does not reference the bound adapter" >&2; exit 2 ;;
+            esac
+        fi
+    fi
 fi
 if [ "$PROFILE" = "isolated" ]; then
     [ "${SADR_QUAL_ISOLATED:-0}" = "1" ] || { echo "FAIL: isolated requires SADR_QUAL_ISOLATED=1" >&2; exit 2; }
@@ -185,22 +229,26 @@ if [ "$PROFILE" = "isolated" ]; then
 fi
 
 set +e
-identity=$(ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -r; cat /proc/device-tree/model 2>/dev/null || true' 2>&1)
+identity=$(ssh "${SSH_OPTS[@]}" "$ROUTER" 'cat /etc/version; uname -r; cat /proc/device-tree/model 2>/dev/null || true; cat /sys/class/net/eth0/address 2>/dev/null || true' 2>&1)
 rc=$?
 set -e
 version=$(printf '%s\n' "$identity" | sed -n '1p')
 kernel=$(printf '%s\n' "$identity" | sed -n '2p')
+model=$(printf '%s\n' "$identity" | sed -n '3p')
+mac=$(printf '%s\n' "$identity" | sed -n '4p')
+fp=$(printf '%s\n%s\n' "$model" "$mac" | sha256sum | awk '{print $1}')
 preflight_step="Verify exact firmware/kernel"
 if [ -n "$DEVICE_ID" ]; then preflight_step="Verify exact firmware/kernel/device"; fi
 if [ "$rc" -ne 0 ] || ! printf '%s' "$version" | grep -Eq '^EdgeRouter\.ER-e50\.v3\.0\.1\.5862409\.' \
     || [ "$kernel" != "4.14.54-UBNT" ] \
     || { [ -n "$FIRMWARE" ] && [ "$version" != "$FIRMWARE" ]; } \
-    || { [ -n "$DEVICE_ID" ] && ! printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; }; then
-    record preflight "$preflight_step" fail "unexpected identity" "ssh identity"
+    || { [ -n "$DEVICE_ID" ] && ! printf '%s' "$identity" | grep -Fq -- "$DEVICE_ID"; } \
+    || { [ -n "$DEVICE_FP" ] && [ "$fp" != "$DEVICE_FP" ]; }; then
+    record preflight "$preflight_step" fail "unexpected identity or fingerprint" "ssh identity"
     report execute
     exit 1
 fi
-record preflight "$preflight_step" pass "version=$version kernel=$kernel" "ssh identity"
+record preflight "$preflight_step" pass "version=$version kernel=$kernel fingerprint=$fp" "ssh identity"
 record independent-management "Operator attests independent management and rollback path" pass \
     "operator attestation, not independently verified: $RECOVERY" "operator attestation"
 
@@ -220,9 +268,10 @@ fi
 # Mutating profiles: snapshot, run exactly one authorized adapter, clean up.
 run_cleanup() {
     if [ "$CLEANED" -eq 1 ]; then return 0; fi
-    CLEANED=1
     if [ -z "${SADR_QUAL_CLEANUP_CMD:-}" ]; then return 1; fi
-    timeout "$CLEANUP_TIMEOUT" bash -c "$SADR_QUAL_CLEANUP_CMD"
+    timeout "$CLEANUP_TIMEOUT" bash -c "$SADR_QUAL_CLEANUP_CMD" || return 1
+    CLEANED=1
+    return 0
 }
 
 # Losing this session must not leave the authorized test objects behind. The trap
@@ -262,6 +311,7 @@ else
 fi
 [ -n "${!var:-}" ] || { record "$id" "Execute authorized test" blocked "missing $var" ""; report execute; exit 1; }
 [ -n "${SADR_QUAL_CLEANUP_CMD:-}" ] || { record cleanup "Delete exact test objects" blocked "missing SADR_QUAL_CLEANUP_CMD" ""; report execute; exit 1; }
+[ -n "${SADR_QUAL_VERIFY_CMD:-}" ] || { record cleanup "Delete exact test objects" blocked "missing SADR_QUAL_VERIFY_CMD (cleanup verification)" ""; report execute; exit 1; }
 export SADR_QUAL_CONFIG_FILE="$CONFIG"
 MUTATION_STARTED=1
 set +e
@@ -283,8 +333,19 @@ fi
 set +e
 run_cleanup >"$OUT/cleanup.log" 2>&1
 crc=$?
+if [ "$crc" -eq 0 ]; then
+    timeout "$CLEANUP_TIMEOUT" bash -c "$SADR_QUAL_VERIFY_CMD" >"$OUT/cleanup.verify.log" 2>&1
+    vrc=$?
+else
+    vrc=1
+fi
 set -e
-if [ "$crc" -eq 0 ]; then record cleanup "Delete exact test objects" pass "cleanup returned 0" "SADR_QUAL_CLEANUP_CMD";
-else record cleanup "Delete exact test objects" fail "cleanup rc=$crc" "SADR_QUAL_CLEANUP_CMD"; fi
+if [ "$crc" -eq 0 ] && [ "$vrc" -eq 0 ]; then
+    record cleanup "Delete exact test objects" pass "cleanup and verification returned 0" "SADR_QUAL_CLEANUP_CMD + SADR_QUAL_VERIFY_CMD"
+elif [ "$crc" -eq 0 ]; then
+    record cleanup "Delete exact test objects" fail "cleanup verification failed (recovery failure); see $OUT/cleanup.verify.log" "SADR_QUAL_VERIFY_CMD"
+else
+    record cleanup "Delete exact test objects" fail "cleanup rc=$crc (recovery failure)" "SADR_QUAL_CLEANUP_CMD"
+fi
 report execute
 check_complete
