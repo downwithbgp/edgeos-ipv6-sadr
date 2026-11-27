@@ -11,7 +11,15 @@
 | T4 packaging/CI | complete off-device | `2d25ea6`; lifecycle 13, artifact 17, reproducible hash |
 | T5 production netns | complete | `c2304db`; 145 pass / 0 fail |
 | T6 hardware/migration design | complete as plans | `docs/hardware-qualification-plan.md`, `docs/migration-plan.md` |
-| T7 independent reviews/final gates | in progress | v8 |
+| T7 independent reviews/final gates | complete off-device | v8 |
+| Q1 actual CI | complete | push/PR runs; `docs/ci-evidence.md` |
+| Q2 boot safety | complete off-device | `docs/boot-safety-review.md` |
+| Q3 transactions | complete simulated | `docs/configuration-transactions.md` |
+| Q4 emulation/parity | blocked target; parity 9/9 | `docs/target-emulation-investigation.md` |
+| Q5 performance | complete off-device | `docs/performance-characterization.md` |
+| Q6 package safety | complete off-device | `docs/package-safety-review.md` |
+| Q7 qualification harness | plan-validated | `qualification/`, 22-step matrix |
+| Q8 shared infra/authorization | proposal/request only | `docs/shared-qualification-infrastructure.md`, `docs/hardware-execution-authorization-request.md` |
 
 **Branch:** `feat/v0.1.0`, checked out in the main workspace. `main` remains the architecture
 baseline at `4af7bb4` and is preserved in history.

@@ -24,6 +24,8 @@ and cutover is explicitly authorized.
 4. Run `validate-working`, `reconcile-working --dry-run` and `status --json`; require no conflict,
    shadow or dependency finding that would make cutover unsafe.
 5. Confirm the package version and service state; confirm the manual table/rules are unchanged.
+6. Use `qualification/run.sh --plan` and the hardware harness to collect preflight/backup evidence;
+   migration remains a separate authorization and is not part of the harness's automatic steps.
 
 ## 3. Staging
 

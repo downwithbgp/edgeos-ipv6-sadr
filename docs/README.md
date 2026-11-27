@@ -17,6 +17,8 @@
 | [`target-emulation-investigation.md`](target-emulation-investigation.md) | Emulation blockers and generic-Linux iproute2 parity evidence |
 | [`performance-characterization.md`](performance-characterization.md) | Phase breakdown, scaling, monitor resources and proposed target budgets |
 | [`package-safety-review.md`](package-safety-review.md) | Maintainer-script trust boundary, lifecycle behavior and residual test seams |
+| [`hardware-execution-authorization-request.md`](hardware-execution-authorization-request.md) | Explicit isolated-hardware authorization request and scope |
+| [`shared-qualification-infrastructure.md`](shared-qualification-infrastructure.md) | Shared qualification/infrastructure proposal; no shared runtime |
 | [`configuration-transactions.md`](configuration-transactions.md) | Working/active commit, rollback, interruption and concurrency simulation results |
 | [`hardware-qualification-plan.md`](hardware-qualification-plan.md) | Plan only; target qualification is separately authorized |
 | [`migration-plan.md`](migration-plan.md) | Plan only; coverage-first cutover and bounded rollback |

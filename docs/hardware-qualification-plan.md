@@ -64,6 +64,10 @@ explicit authorization; the plan itself does not authorize router mutation.
 
 ## 5. Execution sequence
 
+The executable controller is `qualification/run.sh`; see
+`docs/hardware-execution-authorization-request.md`. It is plan-first and refuses execution without
+explicit authorization and an isolated-device declaration.
+
 1. Inventory and backup; verify independent management; record baseline snapshots.
 2. Install the exact package; verify preinst acceptance and service files. Do not configure policies
    yet.
