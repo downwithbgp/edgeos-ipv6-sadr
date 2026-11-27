@@ -17,11 +17,21 @@
 | [`target-emulation-investigation.md`](target-emulation-investigation.md) | Emulation blockers and generic-Linux iproute2 parity evidence |
 | [`performance-characterization.md`](performance-characterization.md) | Phase breakdown, scaling, monitor resources and proposed target budgets |
 | [`package-safety-review.md`](package-safety-review.md) | Maintainer-script trust boundary, lifecycle behavior and residual test seams |
-| [`hardware-execution-authorization-request.md`](hardware-execution-authorization-request.md) | Explicit isolated-hardware authorization request and scope |
+| [`hardware-execution-authorization-request.md`](hardware-execution-authorization-request.md) | Deferred isolated-hardware authorization request; full-matrix scope |
 | [`shared-qualification-infrastructure.md`](shared-qualification-infrastructure.md) | Shared qualification/infrastructure proposal; no shared runtime |
 | [`configuration-transactions.md`](configuration-transactions.md) | Working/active commit, rollback, interruption and concurrency simulation results |
 | [`hardware-qualification-plan.md`](hardware-qualification-plan.md) | Plan only; target qualification is separately authorized |
 | [`migration-plan.md`](migration-plan.md) | Plan only; coverage-first cutover and bounded rollback |
+| [`phase-iv-off-device.md`](phase-iv-off-device.md) | Phase IV off-device status, emulation options and boot-safety alternatives |
+| [`production-baseline.md`](production-baseline.md) | Sanitized read-only production ER-X baseline and inferred behavior |
+| [`production-synthetic-design.md`](production-synthetic-design.md) | Collision assessment and non-disruptive synthetic experiment design |
+| [`production-observability.md`](production-observability.md) | Pre/during/post experiment health checks, probes and stop conditions |
+| [`production-rollback.md`](production-rollback.md) | Backup inventory, exact rollback and watchdog design |
+| [`production-installation-plan.md`](production-installation-plan.md) | Plan only; staged install without activation, side effects and gates |
+| [`production-maintenance-plan.md`](production-maintenance-plan.md) | Plan only; maintenance-window tests and deferred tests |
+| [`production-migration-plan.md`](production-migration-plan.md) | Plan only; coexistence and incremental cutover from manual state |
+| [`production-canary-authorization-request.md`](production-canary-authorization-request.md) | R1 request only; exact mutation, rollback and stop conditions |
+| [`release-blockers.md`](release-blockers.md) | Status vocabulary, release-blocking items and supported configuration |
 
 Planning artifacts:
 

@@ -15,7 +15,7 @@ draft.
 | Merge status | **not merged**; draft |
 | Workflow | `.github/workflows/ci.yml` |
 | Permissions | `contents: read` |
-| Checkout action | `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2) |
+| Checkout action | `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2) for the runs below; Phase IV pins `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) |
 
 ## 2. Actual workflow results
 
@@ -100,5 +100,6 @@ That is byte-identical to the local review-fix build. Artifact validation was **
 lifecycle checks were **13/13** locally and the same lifecycle scripts ran in the CI package job.
 Package size is 26,982 bytes (`Installed-Size` 157 KiB).
 
-The earlier `160b493` runs above remain historical. The final code commit is `db7b64b`; later commits
-change documentation/evidence only. The PR remains draft and unmerged; no release was published.
+The earlier `160b493` runs above remain historical. The final code commit for the v0.1.0 candidate is
+`db7b64b`; the Phase IV commits after it add qualification tooling and documentation only and do not
+change the product package. The PR remains draft and unmerged; no release was published.

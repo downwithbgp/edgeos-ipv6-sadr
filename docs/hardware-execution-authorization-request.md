@@ -1,6 +1,12 @@
 # Hardware execution authorization request
 
-**Status:** request only. No hardware execution is authorized by this document.
+**Status:** DEFERRED. An isolated ER-X is not available; this request is not actionable in Phase IV.
+No hardware execution is authorized by this document.
+
+The production-aware replacement for the first executable batch is
+[`production-canary-authorization-request.md`](production-canary-authorization-request.md). This
+document is retained as the scope definition for the full 22-step matrix once dedicated hardware
+exists.
 
 ## 1. Requested authorization
 

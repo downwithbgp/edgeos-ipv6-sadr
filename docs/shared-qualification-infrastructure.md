@@ -59,7 +59,35 @@ first extraction small:
 Do not extract a daemon, a database, a shared runtime or a generic configuration engine. Do not make
 either product package depend on the shared repository at runtime.
 
-## 6. Risks and non-goals
+## 6. Qualification without dedicated hardware
+
+A dedicated development ER-X is not available, so the shared infrastructure must not assume a
+hardware-in-the-loop target. The realistic resource set is:
+
+| Resource | Use | Limits |
+|---|---|---|
+| Linux VMs / Unraid-hosted workloads | endpoints, captures, FRR routing peers | not EdgeOS userspace or kernel |
+| Network namespaces + veth | the existing 145-assertion topology, failure injection | generic Linux evidence only |
+| Existing switching infrastructure | a temporary isolated test VLAN/port, if a free port exists | must not disturb production VLANs |
+| FRR-based peers | BGP/ECMP and withdrawal simulation | simulated peers are not production BGP |
+| Production ER-X | bounded read-only discovery, later authorized canaries | operator-controlled, never CI-driven |
+
+Consequences for the proposal:
+
+- Adapters must declare their evidence class (generic Linux / emulated / target) and the report must
+  render it; a namespace pass must never be presented as target evidence.
+- Isolation gates become mandatory rather than optional: a `production` target class requires a
+  scoped authorization file and an attestation of independent management.
+- Failure-injection, transaction and performance suites stay namespace/VM-based; only bounded
+  synthetic checks are designed for the production router.
+
+Both packages stay independent. Production hardware access remains operator-controlled: no
+unattended GitHub Actions workflow may target the production ER-X, and pull-request workflows must
+never receive production credentials, addresses or network reachability. A dedicated
+hardware-in-the-loop CI path stays a future goal; the namespace/VM layer is its off-device stand-in,
+not a replacement for target qualification.
+
+## 7. Risks and non-goals
 
 - Adapter drift: version the adapter contract and publish fixtures.
 - Security: isolation/authorization must remain mandatory; no production defaults.
