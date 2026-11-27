@@ -12,6 +12,7 @@
 | [`platform-compatibility.md`](platform-compatibility.md) | Exact supported platform, reserved ranges and non-claims |
 | [`prototype-results.md`](prototype-results.md) | PoC and production-phase results (145 assertions, generic Linux) |
 | [`v0.1.0-evidence.md`](v0.1.0-evidence.md) | v0.1.0 test, package, resource evidence and remaining gates |
+| [`ci-evidence.md`](ci-evidence.md) | Actual GitHub Actions runs, package hash comparison and reproducibility scope |
 | [`hardware-qualification-plan.md`](hardware-qualification-plan.md) | Plan only; target qualification is separately authorized |
 | [`migration-plan.md`](migration-plan.md) | Plan only; coverage-first cutover and bounded rollback |
 
