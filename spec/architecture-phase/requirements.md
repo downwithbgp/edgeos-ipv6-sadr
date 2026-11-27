@@ -56,9 +56,10 @@ A correct route in the FIB is not proof of end-to-end connectivity.
   be visible and reproducible.
 * Exact duplicate source prefixes across policies are ambiguous and must be rejected unless a
   deterministic tie-break is defined and documented.
-* A policy may be administratively disabled. The semantics of disabling must be explicit: it either
-  restores native routing intentionally or preserves a fail-closed guard. It must not silently
-  create cross-provider egress.
+* A policy may be administratively disabled. `disable` must be explicit and fail-closed: internal
+  destinations remain reachable through the internal whitelist, the provider route is withdrawn, the
+  terminal guard remains, and external traffic is blocked. Deleting the policy is the explicit way
+  to restore native routing. Neither operation may silently create cross-provider egress.
 
 ### R-3 Destination-aware routing
 
@@ -67,8 +68,14 @@ A correct route in the FIB is not proof of end-to-end connectivity.
 * The extension must not assume that every non-default route in `main` is internal. A more-specific
   external route must not bypass the source policy merely because it is non-default.
 * The operator must be able to inspect and control which destinations may bypass a provider-specific
-  default. The model must define whether this is an explicit destination-exception list, a
-  destination-specific table, a suppressor policy or another native mechanism.
+  default. The leading model is an extension-owned internal whitelist table containing connected
+  routes and explicitly declared internal destinations, each with a terminal per-prefix guard. A
+  `main` lookup with `suppress_prefixlength 0` is not a strict whitelist: a more-specific external
+  route under the exception can still be selected. If it is considered, the review must address that
+  case and test it.
+* A more-specific external route **inside** a declared internal prefix must not capture a constrained
+  source. The internal whitelist must contain only the exact internal prefixes and their guards, not
+  all more-specific routes from `main`.
 * Dynamic internal routes (for example BGP-learned application prefixes) must be supported when they
   are covered by an explicit exception, without implementing BGP-specific policy.
 * The main routing table must not be modified by the extension except for objects it explicitly
@@ -94,16 +101,15 @@ A correct route in the FIB is not proof of end-to-end connectivity.
 * Fail-closed must survive process termination between mutation steps, interface loss, interface
   recreation, route loss and configuration rollback. A rule that remains after its table route has
   disappeared is not sufficient protection.
-* The system must distinguish, in its operational state and diagnostics:
-  * no matching route;
-  * interface administratively or operationally unavailable;
-  * next hop unresolved;
-  * neighbour unreachable;
-  * link operational but remote transit unavailable;
-  * routing daemon temporarily unavailable;
-  * configured but not yet reconciled;
-  * ownership conflict;
-  * reconciliation failed.
+* The system must distinguish, in its operational state and diagnostics, one health enum with a
+  separate reason:
+  * `effective`, `incomplete`, `dependency-unavailable`, `protected`, `shadowed`, `conflict`,
+    `failed`, `disabled`;
+  * reasons including no matching route, interface administratively or operationally unavailable,
+    next hop unresolved, neighbour unreachable, routing-daemon temporarily unavailable,
+    configuration-API error and reconciliation error.
+* "Link operational but remote transit unavailable" is not detectable without provider health
+  monitoring, which is out of scope for v0.1.0. It is an explicit non-guarantee, not a claimed state.
 * Explicit fallback may be supported only where the operator knowingly requests it and the semantics
   are defensible. It must not be the default.
 * The system must not claim that a FIB entry establishes end-to-end reachability.
@@ -118,6 +124,9 @@ A correct route in the FIB is not proof of end-to-end connectivity.
   managed table is a conflict, not something to delete.
 * Rule priorities and table identifiers must be collision-checked. A conflict must fail configuration
   application with a clear diagnostic, not overwrite unrelated state.
+* Rule priority must also be checked for **shadowing**: a foreign rule that precedes the extension's
+  range and matches a configured source makes the policy ineffective. The health state must report
+  `shadowed`, not `effective`.
 * Installing the package must not seize the operator's existing manual table or rules. A separate
   migration/adoption procedure is required.
 * Ordinary SADR policy changes must not restart BGP/OSPF or disrupt the routing daemon.
@@ -165,6 +174,13 @@ The design must:
   * scripted, interactive and boot-time sessions may differ.
 * The commit action must tolerate the non-atomic EdgeOS commit engine and preserve routing safety
   even when a subtree fails or a later priority group is not applied.
+* The commit action must read the **working configuration** (`exists`/`returnValue`) for its own
+  still-executing subtree. `existsEffective` may report those nodes as absent during the subtree's
+  `end:` action. An API error is a hard failure, never "absent".
+* The action must persist an atomic desired-state snapshot for the monitor; the monitor must not
+  depend on live configuration-API visibility during a commit.
+* The boot window before the first reconciliation is a named non-guarantee unless an early boot
+  guard service, ordered before WAN forwarding, is implemented. The design must state which applies.
 
 ### R-9 Operational diagnostics
 
@@ -187,8 +203,8 @@ The target's route/rule JSON is unreliable (`ip -j -6 route` and `ip -j -6 rule`
 supported build). Diagnostics must use stable text parsing or a scoped helper, and may emit their
 own machine-readable output.
 
-Health states must distinguish configured-and-effective, configured-but-incomplete,
-dependency-unavailable, protected-by-failure-policy, ownership-conflict and reconciliation-failed.
+Health states must be one enum: `effective`, `incomplete`, `dependency-unavailable`, `protected`,
+`shadowed`, `conflict`, `failed` and `disabled`, with a separate reason field for the detailed cause.
 A health check suitable for monitoring must have meaningful exit codes.
 
 ### R-10 Testing and evidence
@@ -234,12 +250,14 @@ The phase is complete when:
 * **A-1** the architecture-phase spec has been independently reviewed;
 * **A-2** target capabilities are recorded with provenance: kernel config, IPv6 FIB/RPDB,
   iproute2 operations, configuration templates, commit ordering and routing daemon;
-* **A-3** an executable netns proof of concept demonstrates source-dependent egress, internal
-  destination preservation, no unintended cross-provider fallback, fail-closed guard behaviour,
-  source-prefix precedence, locally originated traffic and interface recreation recovery, with
-  actual packet-path evidence;
+* **A-3** an executable netns proof of concept demonstrates source-dependent egress, connected and
+  configured internal destination preservation, no unintended cross-provider fallback (including a
+  more-specific external route inside a declared internal prefix), fail-closed guard behaviour,
+  source-prefix precedence including nested prefixes, locally originated traffic and interface
+  recreation recovery, with actual packet-path evidence;
 * **A-4** the source-specific FIB alternative is experimentally evaluated, including whether the
-  target iproute2 and kernel support the required operation;
+  target iproute2 and kernel support the required operation and whether nested source prefixes and
+  more-specific routes behave as required;
 * **A-5** a decision record compares the alternatives and recommends an architecture with evidence,
   failure modes and known unknowns;
 * **A-6** routing semantics, ownership, desired/effective state, lifecycle reconciliation and
@@ -251,14 +269,18 @@ The phase is complete when:
 ## 4. Open questions to resolve by experiment
 
 1. Does the target `ip` binary accept `ip -6 route add ... from <source>`? Does the target kernel
-   apply source-specific FIB routes with the expected lookup order?
-2. Does an `unreachable default` route inside a dedicated table stop RPDB fallback to `main`?
-3. Which destinations may bypass the provider table without reintroducing external-route leakage?
-4. Can the extension repair its routes after netdevice recreation without a persistent daemon, and
-   what is the minimum event-driven component?
+   apply source-specific FIB routes with the expected lookup order, including nested source prefixes?
+2. Does an `unreachable default` route inside a dedicated table stop RPDB fallback to `main`? Does a
+   per-prefix `unreachable` route inside the internal table stop fallback to a provider table?
+3. Can the internal whitelist mirror exact routes from `main` without accepting more-specific
+   external routes under the same prefix, and what should happen with ECMP/ambiguous matches?
+4. Can the extension repair its provider and internal routes after netdevice recreation without a
+   persistent daemon, and what is the minimum event-driven component?
 5. What rule-priority and table-ID ranges are safe on the supported firmware, and how are collisions
-   detected deterministically?
+   and shadowing detected deterministically during migration?
 6. How does the target configuration engine execute a new `protocols` subtree relative to
-   interfaces, addresses and static routes, and what does `my_cli_shell_api` report during its
-   `end:` action?
+   interfaces, addresses and static routes? What does `my_cli_shell_api` report during its `end:`
+   action, and can an early boot guard be ordered before WAN forwarding?
 7. What are the local source-selection and socket-caching behaviours that SADR cannot fix?
+8. Does the ER-X IPv6 forwarding/offload path honor multi-table RPDB lookup? If not, the architecture
+   has a correctness problem, not only a performance problem.

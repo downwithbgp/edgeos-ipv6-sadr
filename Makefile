@@ -2,7 +2,6 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := test
 
 # Files that are part of the repository, excluding generated/build state.
-REPO_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f -print)
 SHELL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.sh' -o -name '*.bash' \) -print | sort)
 PERL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.pl' -o -name '*.pm' \) -print | sort)
 
@@ -35,7 +34,7 @@ test-unit:
 
 # Privileged container; generic Linux evidence only, not EdgeOS evidence.
 test-netns:
-	bash test/integration/run-in-docker.sh
+	REQUIRE_NETNS_TEST=1 bash test/integration/run-in-docker.sh
 
 clean:
 	rm -rf build

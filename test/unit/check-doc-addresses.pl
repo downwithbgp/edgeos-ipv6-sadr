@@ -1,20 +1,19 @@
 #!/usr/bin/perl
-# Reject non-documentation IPv6 literals in public repository text.
+# Reject non-documentation IPv6 and IPv4 literals in public repository text.
 #
-# The project must not publish the maintainer's real prefixes. Examples use
-# 2001:db8::/32, link-local, multicast, ULA and the unspecified/loopback
-# addresses. This check is deliberately conservative: a literal that is not
-# in an allowed range fails the build and must be replaced or justified.
+# Examples must use 2001:db8::/32, the IPv4 TEST-NET ranges, loopback,
+# link-local, multicast or ULA space. This check is deliberately conservative:
+# a literal outside those ranges fails the build and must be replaced or
+# explicitly justified.
 use strict;
 use warnings;
-use Socket qw(AF_INET6 inet_pton inet_ntop);
-use File::Find;
+use Socket qw(AF_INET AF_INET6 inet_pton inet_ntop);
 
 my @roots = @ARGV ? @ARGV : ('.');
 my @violations;
 my $checked = 0;
 
-sub allowed {
+sub allowed_v6 {
     my ($canon) = @_;
     return 1 if $canon eq '::' || $canon eq '::1';
     return 1 if $canon =~ /^2001:db8(?::|$)/;
@@ -24,10 +23,25 @@ sub allowed {
     return 0;
 }
 
+sub allowed_v4 {
+    my ($canon) = @_;
+    return 1 if $canon eq '0.0.0.0' || $canon eq '255.255.255.255';
+    return 1 if $canon =~ /^127\./;
+    return 1 if $canon =~ /^192\.0\.2\./;
+    return 1 if $canon =~ /^198\.51\.100\./;
+    return 1 if $canon =~ /^203\.0\.113\./;
+    return 0;
+}
+
 sub check_line {
-    my ($path, $line_no, $line) = @_;
-    # At least two colons and no whitespace inside the candidate. This is a
-    # conservative lexical filter; inet_pton performs the real validation.
+    my ($display_path, $line_no, $line) = @_;
+
+    # Explicit, reviewable escape hatch for the checker's own negative
+    # fixtures. Do not use it for prose examples.
+    return if $line =~ /doc-check:\s*ignore-line/;
+
+    # IPv6: at least two colons. This lexical filter is intentionally broad;
+    # inet_pton performs the real validation.
     while ($line =~ /(?<![0-9A-Fa-f:])([0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,})(?![0-9A-Fa-f:])/g) {
         my $candidate = $1;
         $candidate =~ s/^\[//;
@@ -36,46 +50,82 @@ sub check_line {
         next unless defined $packed;
         $checked++;
         my $canon = inet_ntop(AF_INET6, $packed);
-        next if allowed($canon);
-        push @violations, "$path:$line_no: $candidate";
+        next if allowed_v6($canon);
+        push @violations, "$display_path:$line_no: IPv6 $candidate";
+    }
+
+    # IPv4: four dotted decimal octets. Version strings such as 1.2.3.4 are
+    # also caught; use a TEST-NET range in documentation.
+    while ($line =~ /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?![\d.])/g) {
+        my $candidate = $1;
+        my $packed = inet_pton(AF_INET, $candidate);
+        next unless defined $packed;
+        $checked++;
+        my $canon = inet_ntop(AF_INET, $packed);
+        next if allowed_v4($canon);
+        push @violations, "$display_path:$line_no: IPv4 $candidate";
     }
 }
 
-sub wanted {
-    my $path = $File::Find::name;
+sub check_file {
+    my ($path, $display_path) = @_;
     return unless -f $path;
-    return if $path =~ m{/\.git/} || $path =~ m{^\./\.git$};
-    return if $path =~ m{/build/} || $path =~ m{/node_modules/};
-    # This checker contains IPv6-shaped regex and format fragments, not
-    # documentation examples.
-    return if $path =~ m{/test/unit/check-doc-addresses\.pl$};
     return unless -T $path;
+
+    # Only scan prose, shell and data files. Perl sources contain regex
+    # fragments such as Cwd::abs_path that look like IPv6 literals.
+    my $base = $path;
+    $base =~ s{.*/}{};
+    my $scannable =
+        ($base =~ /\.(?:md|txt|sh|bash|yml|yaml|json|conf|def|template)$/) ||
+        ($base =~ /^(?:README|AGENTS|CONTRIBUTING|CHANGELOG)$/);
+    return unless $scannable;
+
     open my $fh, '<', $path or do {
-        push @violations, "$path: cannot read: $!";
+        push @violations, "$display_path: cannot read: $!";
         return;
     };
     my $line_no = 0;
     while (my $line = <$fh>) {
         $line_no++;
-        check_line($path, $line_no, $line);
+        check_line($display_path, $line_no, $line);
     }
     close $fh;
 }
 
+sub walk {
+    my ($dir) = @_;
+    opendir my $dh, $dir or do {
+        push @violations, "$dir: cannot read directory: $!";
+        return;
+    };
+    my @entries = sort grep { $_ ne '.' && $_ ne '..' } readdir $dh;
+    closedir $dh;
+    for my $entry (@entries) {
+        my $path = "$dir/$entry";
+        if (-d $path) {
+            next if $entry eq '.git' || $entry eq 'build' || $entry eq 'node_modules';
+            walk($path);
+        } elsif (-f $path) {
+            check_file($path, $path);
+        }
+    }
+}
+
 for my $root (@roots) {
     if (-d $root) {
-        find({ wanted => \&wanted, no_chdir => 1 }, $root);
+        walk($root);
     } elsif (-f $root) {
-        wanted($root);
+        check_file($root, $root);
     }
 }
 
 if (@violations) {
-    print STDERR "Non-documentation IPv6 literal(s) found:\n";
+    print STDERR "Non-documentation IP literal(s) found:\n";
     print STDERR "  $_\n" for @violations;
-    print STDERR "Use 2001:db8::/32 (or fe80::/10, fc00::/7, ff00::/8, ::/::1) in public text.\n";
+    print STDERR "Use 2001:db8::/32, 192.0.2.0/24, 198.51.100.0/24 or 203.0.113.0/24 in public text.\n";
     exit 1;
 }
 
-print "checked $checked IPv6 literal(s); all in documentation-safe ranges\n";
+print "checked $checked IP literal(s); all in documentation-safe ranges\n";
 exit 0;

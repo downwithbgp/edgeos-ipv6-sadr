@@ -9,11 +9,16 @@ its own releases once an installable package exists.
 
 - Architecture-phase specification, requirements and evidence conventions.
 - Repository governance, contribution rules and CI foundation.
+
+### In progress
+
 - Linux network-namespace proof of concept for IPv6 multihoming and SADR.
 
 ### Changed
 
-- Nothing yet; the routing architecture is under review.
+- Revised the leading hypothesis after independent review: a global internal whitelist table plus
+  per-policy provider tables, first-application blocking, shadow detection, an explicit boot-window
+  contract and a single health-state vocabulary.
 
 ### Known limitations
 

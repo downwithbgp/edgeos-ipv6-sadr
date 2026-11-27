@@ -31,7 +31,7 @@ The architecture proposal evaluates three viable families:
 
 | Candidate | Summary | Current status |
 |---|---|---|
-| **A. RPDB with extension-owned tables** | Source rules select an extension-owned table; the table carries the provider route and a terminal `unreachable` default; explicit destination exceptions look up `main`. | Leading candidate; under experiment |
+| **A. RPDB with internal and provider tables** | Source rules select an extension-owned internal whitelist table first, then a provider table; both carry terminal guards; explicit internal prefixes are mirrored exactly. | Leading candidate; under experiment |
 | **B. Source-specific IPv6 FIB** | Source-qualified routes (`from <source>`) in `main`; no RPDB rules. | Under experiment; target iproute2 support unproven |
 | **C. Native table routes + extension rules** | Reuse `protocols static table` for provider routes; extension owns only rules/guards. | Under experiment; native tables limited to 1–200 and are not repaired after interface recreation |
 
@@ -53,15 +53,22 @@ Read-only inspection has been performed on this firmware. No configuration mutat
 installation or hardware qualification has been performed. Other hardware and firmware versions are
 out of scope until validated.
 
-## What is in this repository
+## What this phase produces
+
+Already present:
 
 ```text
-spec/architecture-phase/   architecture-phase requirements, design hypotheses and task plan
+spec/architecture-phase/   requirements, design hypotheses and task plan
+test/unit/                 fast checks that do not need root or a router
+.github/workflows/         CI for lint and off-device tests
+```
+
+Produced as the phase completes:
+
+```text
 docs/                      durable requirements, investigation, architecture and testing documents
 test/integration/          executable Linux network-namespace proof of concept
-test/unit/                 fast checks that do not need root or a router
 prototype/                 disposable desired-state/apply/verify prototype used by the PoC
-.github/workflows/         CI for lint and off-device tests
 ```
 
 Repository conventions, evidence labels and hard safety rules are in [`AGENTS.md`](AGENTS.md).
