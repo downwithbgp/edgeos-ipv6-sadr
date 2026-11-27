@@ -82,10 +82,23 @@ no release/publish step.
 - Tagging, release publication and artifact signing remain prohibited until hardware qualification
   and separate authorization.
 
-## 8. Final review-fix build
+## 8. Final review-fix build and CI
 
-The post-review implementation adds the boot/transaction/perf/qualification work and the review
-fixes. Its local package hash is
-`f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f` (26,982 bytes, Installed-Size
-157 KiB), artifact 20/20 and lifecycle 13/13. The final GitHub Actions runs for this head are recorded
-after the final push; the earlier `160b493` runs above remain historical.
+The post-review implementation is on `feat/v0.1.0` at `db7b64b` (docs/evidence commits follow). Final
+GitHub Actions runs:
+
+| Trigger | Run | Result |
+|---|---|---|
+| push `feat/v0.1.0` (`db7b64b`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46011133378> | success: unit **619**, netns **145/0**, iproute2 parity **9/0**, package |
+| pull request #1 (`db7b64b`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46011139256> | success: unit **619**, netns **145/0**, iproute2 parity **9/0**, package |
+
+The final package job produced the same hash in both builds and both runs:
+
+`f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`
+
+That is byte-identical to the local review-fix build. Artifact validation was **20/20**; package
+lifecycle checks were **13/13** locally and the same lifecycle scripts ran in the CI package job.
+Package size is 26,982 bytes (`Installed-Size` 157 KiB).
+
+The earlier `160b493` runs above remain historical. The final code commit is `db7b64b`; later commits
+change documentation/evidence only. The PR remains draft and unmerged; no release was published.
