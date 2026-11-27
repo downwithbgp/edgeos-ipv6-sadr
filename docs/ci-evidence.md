@@ -145,3 +145,27 @@ the local run of the same commands.
 No product source or package content changed in Phase V-A. The package hash for the v0.1.0 candidate
 remains `f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`. PR #1 remains draft and
 unmerged; no release was published. No production mutation was performed: R1 is a proposal only.
+
+## 11. Phase V-C runs (R1 harness stabilization and A1 firewall block)
+
+Phase V-C fixes the Stage 0 abort, adds the structured result/manifest/baseline path, and records the
+real A1 firewall block. The first post-change commit `f79b65b` exposed a CI-only shellcheck version
+difference: `lint-and-unit` failed on SC2329 (indirect trap functions in `r1-canary.sh`); `netns` and
+`package` succeeded. The file-level suppression in `67d9ac5` fixed it.
+
+| Trigger | Run | Result |
+|---|---|---|
+| push `feat/v0.1.0` (`f79b65b`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46049934941> | failure: `lint-and-unit` SC2329; `netns`/`package` success |
+| pull request #1 (`f79b65b`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46049942128> | failure: `lint-and-unit` SC2329; `netns`/`package` success |
+| push `feat/v0.1.0` (`67d9ac5`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46051940367> | success: `lint-and-unit`, `netns`, `package` |
+| pull request #1 (`67d9ac5`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46051946359> | success: `lint-and-unit`, `netns`, `package` |
+
+Local evidence for `67d9ac5`: `make lint`; `make test` (619 unit/property/failure assertions plus
+qualification: profile/baseline/preflight/mutating result paths, cleanup 19/19, identity 14/14,
+manifest 4/4); package lifecycle and reproducibility; netns **145/0** plus R1 simulation **10/0**.
+The final execution manifest is `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`;
+the standalone A1 baseline is recorded in `docs/r1-execution-evidence.md` (Stage 0/1 pass; A1
+0/20 matching + 0/10 control; SERVERv6_IN-30 107→137; no mutation; R1 not run). No product
+source/package content changed in Phase V-C; the package hash remains
+`f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`. PR #1 remains draft and
+unmerged; no release was published.
