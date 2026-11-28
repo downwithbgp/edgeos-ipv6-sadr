@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. The project follows semantic versioning for
 its own releases once an installable package exists.
 
+## [0.1.0] - 2026-11-27 — implementation review, not released
+
+### Added
+
+- Production Perl reconciler with native `protocols ipv6-sadr`, terminal/provider guards,
+  active/staging pairs, ownership checks, health, early boot guard, monitor and CLI.
+- Native configuration/op templates and systemd monitor/boot-guard units.
+- 619 unit/property/failure assertions and a 145-assertion generic-Linux namespace phase with
+  packet-path, established-flow and transition coverage.
+- Debian package with firmware/kernel preinst guard, removal refusal, reproducible build and
+  lifecycle/artifact checks.
+- Hardware qualification plan, migration/rollback plan and v0.1.0 evidence record.
+
+### Notes
+
+- No hardware qualification, release publication or production-router mutation occurred.
+- The package is not installed on a router. CI package workflow is defined but not run here.
+- Route op diagnostic uses named source/destination selectors (see ADR-0001).
+
 ## [Unreleased]
 
 ### Added

@@ -1,0 +1,23 @@
+{
+  "device_id": "Ubiquiti EdgeRouter",
+  "device_fingerprint": "0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440",
+  "profile": "canary",
+  "target_class": "production",
+  "test_ids": [
+    "R1-guard-only"
+  ],
+  "max_duration_seconds": 120,
+  "approved_mutation_scope": "one exact terminal rule: from fd42:901::a1/128 unreachable pref 21031; no table, route, interface, package or configuration change",
+  "recovery": "device-local systemd-run timer plus r1-cleanup.sh exact deletion and verification; foreign rule refused; controller verification required",
+  "not_after": "<MAINTAINER-SET-UTC-DEADLINE>",
+  "artifact_sha256": "",
+  "adapter_sha256": "00d8880ba84132ae7392731b13f07cec6c881fefeb9fbadf43249befd7edca6a",
+  "cleanup_sha256": "3c329ca6b3dcd20e98f9a0dc0adff37db84c9a533954fadd18f70f5f84040c81",
+  "install_sha256": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f",
+  "approval_reference": "Phase V-C maintainer decision \u2014 renewed conditional R1 authorization; A1 blocked by the production IPv6 firewall, no mutation performed",
+  "status": "retired",
+  "retirement": "Phase VI-B (2026-11-27): the outstanding Phase V-C conditional authorization is retired without execution and without being consumed; no R1/R2 execution is authorized; a fresh candidate-bound authorization is required",
+  "execution_manifest": "docs/r1-execution-manifest.json",
+  "execution_manifest_sha256": "1d1b0b4393ac1671c2bef522b72c030159ecbaa640da6287faa100fab8f09e63",
+  "candidate_note": "Regenerated candidate for a future grant; the VI-C and VI-D executions used separate authorization records (docs/r1-authorization-viic.json, docs/r1-authorization-viid.json)."
+}

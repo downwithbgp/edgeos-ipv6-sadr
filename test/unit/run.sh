@@ -34,4 +34,16 @@ if perl "$CHECK" "$TMP/bad4.md" >/dev/null 2>&1; then
     exit 1
 fi
 
+echo "== address-hygiene self-test: compressed hex prefix must not be masked =="
+BAD6B='CAFE::1' # doc-check: ignore-line
+printf '%s\n' "$BAD6B" >"$TMP/bad6b.md"
+if perl "$CHECK" "$TMP/bad6b.md" >/dev/null 2>&1; then
+    echo "FAIL: checker masked a genuine IPv6-like literal" >&2
+    exit 1
+fi
+
+echo "== Perl unit, property and failure-injection tests =="
+cd "$ROOT"
+prove -I "$ROOT/src/lib" -I "$ROOT/test/unit/lib" -r "$ROOT/test/unit/t"
+
 echo "ALL UNIT TESTS PASSED"

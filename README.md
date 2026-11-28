@@ -2,9 +2,13 @@
 
 Native, persistent IPv6 source-address-dependent routing (SADR) for Ubiquiti EdgeOS.
 
-> **Status: architecture review.** The architecture proposal, target investigation, experiment
-> record and executable Linux proof of concept are complete. There is **no installable package** and
-> nothing here is qualified for a live router. Do not deploy it.
+> **Status: v0.1.0 implementation review.** The production reconciler, native templates, early boot
+> guard, monitor, unit/property/failure tests, generic-Linux namespace lab and a Debian package exist
+> on branch `feat/v0.1.0`. The package is **not installed on the production router**, no release is
+> published, and nothing here is hardware-qualified. Do not deploy it. See
+> [`docs/v0.1.0-evidence.md`](docs/v0.1.0-evidence.md),
+> [`docs/hardware-qualification-plan.md`](docs/hardware-qualification-plan.md) and
+> [`docs/migration-plan.md`](docs/migration-plan.md).
 
 ## The problem
 

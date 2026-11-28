@@ -32,4 +32,4 @@ exec docker run --rm --privileged --network=none \
     -v "$ROOT":/repo:ro \
     -w /repo \
     "$IMAGE" \
-    bash test/integration/netns-sadr.sh
+    bash -c 'bash test/integration/netns-sadr.sh && bash test/integration/r1-canary-sim.sh'

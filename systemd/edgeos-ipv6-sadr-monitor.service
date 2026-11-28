@@ -1,0 +1,17 @@
+[Unit]
+Description=EdgeOS IPv6 SADR reconciliation monitor
+Documentation=https://github.com/downwithbgp/edgeos-ipv6-sadr
+After=vyatta-router.service edgeos-ipv6-sadr-guard.service
+ConditionPathExists=/config/config.boot
+
+[Service]
+Type=simple
+ExecStart=/opt/vyatta/sbin/vyatta-ipv6-sadr monitor
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=edgeos-ipv6-sadr
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=multi-user.target

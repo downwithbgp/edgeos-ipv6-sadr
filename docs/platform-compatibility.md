@@ -1,7 +1,12 @@
 # Platform compatibility
 
-**Status:** architecture phase. No installable package exists and no compatibility claim has been
-qualified on hardware.
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
+**Status:** v0.1.0 package builds reproducibly off-device and the preinst refuses unsupported
+firmware/kernel combinations. **No EdgeOS compatibility claim exists** and hardware qualification is
+pending. See [`v0.1.0-evidence.md`](v0.1.0-evidence.md) and
+[`hardware-qualification-plan.md`](hardware-qualification-plan.md).
 
 ## 1. Supported investigation platform
 
@@ -80,7 +85,8 @@ A future package must refuse installation on an unsupported firmware/kernel. The
 * the required `ip` operations are present;
 * the package is not installed over an incompatible kernel/package set.
 
-The exact guard and error messages are v0.1.0 implementation deliverables.
+The package and preinst guard are implemented off-device. Target iproute2/config-engine behaviour and
+emulation remain Unverified; see `docs/target-emulation-investigation.md`.
 
 ## 7. Hardware qualification status
 

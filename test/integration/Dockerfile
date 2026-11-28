@@ -6,6 +6,7 @@ RUN apt-get update \
         iputils-ping \
         tcpdump \
         iptables \
+        perl \
         python3 \
         procps \
         ca-certificates \

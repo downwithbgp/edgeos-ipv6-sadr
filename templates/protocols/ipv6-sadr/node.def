@@ -1,0 +1,5 @@
+priority: 500
+help: IPv6 source-address-dependent routing
+end: /opt/vyatta/sbin/vyatta-ipv6-sadr reconcile-working
+delete: /opt/vyatta/sbin/vyatta-ipv6-sadr reconcile-working
+commit:expression: exec "/opt/vyatta/sbin/vyatta-ipv6-sadr validate-working >/dev/null"

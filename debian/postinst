@@ -1,0 +1,15 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -e
+
+if [ "$1" = "configure" ]; then
+    SYSTEMCTL=${EDGEOS_IPV6_SADR_TEST_SYSTEMCTL:-systemctl}
+    if command -v "$SYSTEMCTL" >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+        "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
+        "$SYSTEMCTL" enable edgeos-ipv6-sadr-guard.service \
+            edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
+        "$SYSTEMCTL" restart edgeos-ipv6-sadr-monitor.service >/dev/null 2>&1 || true
+    fi
+fi
+
+exit 0

@@ -1,0 +1,4 @@
+type: txt
+help: Egress interface for the policy provider route
+val_help: <interface>; Egress interface name
+syntax:expression: pattern $VAR(@) "^[A-Za-z0-9][A-Za-z0-9_.:-]*$" ; "invalid policy interface name"

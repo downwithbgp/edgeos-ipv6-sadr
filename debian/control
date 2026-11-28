@@ -1,0 +1,20 @@
+Source: edgeos-ipv6-sadr
+Section: net
+Priority: optional
+Maintainer: Vadim Petrov <vadim@vadimpetrov.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: edgeos-ipv6-sadr
+Architecture: all
+Depends: ${misc:Depends}, perl, iproute2
+Recommends: systemd
+Description: native IPv6 source-address-dependent routing for EdgeOS
+ Adds a native protocols ipv6-sadr configuration subtree, a Perl
+ reconciler and early-boot guard. The implementation uses the Linux RPDB
+ with an internal destination whitelist and per-policy provider tables.
+ .
+ This package is implementation and off-device qualification only. It does
+ not constitute an EdgeOS compatibility claim, and installation on a
+ production router is not authorized by the package itself.

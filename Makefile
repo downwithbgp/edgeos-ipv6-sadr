@@ -6,11 +6,11 @@ SHELL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -ty
 PERL_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f \( -name '*.pl' -o -name '*.pm' \) -print | sort)
 PYTHON_FILES := $(shell find . -path ./.git -prune -o -path ./build -prune -o -type f -name '*.py' -print | sort)
 
-.PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns clean
+.PHONY: test test-all lint lint-shell lint-perl lint-python shellcheck test-unit test-netns test-package test-target-parity test-perf test-qualification clean
 
-test: lint test-unit
+test: lint test-unit test-qualification
 
-test-all: test test-netns
+test-all: test test-netns test-target-parity
 
 lint: lint-shell lint-perl lint-python shellcheck
 
@@ -37,6 +37,22 @@ shellcheck:
 
 test-unit:
 	bash test/unit/run.sh
+
+test-package:
+	bash test/package/lifecycle.sh
+
+test-target-parity:
+	REQUIRE_TARGET_PARITY=1 bash test/target/run-in-docker.sh
+
+test-perf:
+	PERL5LIB=src/lib:test/unit/lib perl test/perf/profile.pl
+
+test-qualification:
+	bash test/qualification/test-plan.sh
+	bash test/qualification/test-profiles.sh
+	bash test/qualification/test-cleanup.sh
+	bash test/qualification/test-identity.sh
+	bash test/qualification/test-manifest.sh
 
 # Privileged container; generic Linux evidence only, not EdgeOS evidence.
 test-netns:

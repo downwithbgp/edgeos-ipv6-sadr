@@ -1,0 +1,5 @@
+multi:
+type: txt
+help: Internal-facing interface whose connected routes are trusted
+val_help: <interface>; Internal interface name
+syntax:expression: pattern $VAR(@) "^[A-Za-z0-9][A-Za-z0-9_.:-]*$" ; "invalid internal interface name"

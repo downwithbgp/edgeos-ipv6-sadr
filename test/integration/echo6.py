@@ -10,6 +10,7 @@
 # routing rather than relying on automatic source selection.
 import socket
 import sys
+import time
 
 TIMEOUT = 3.0
 
@@ -31,8 +32,11 @@ def server_tcp(port):
     while True:
         conn, _ = sock.accept()
         try:
-            data = conn.recv(65535)
-            conn.sendall(b"pong:" + data)
+            while True:
+                data = conn.recv(65535)
+                if not data:
+                    break
+                conn.sendall(b"pong:" + data)
         finally:
             conn.close()
 
@@ -59,6 +63,34 @@ def client_tcp(src, dst, port):
         raise SystemExit("unexpected TCP reply: %r" % (data,))
 
 
+def client_udp_stream(src, dst, port, count, delay):
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    sock.bind((src, 0))
+    sock.settimeout(TIMEOUT)
+    for _ in range(count):
+        sock.sendto(b"probe", (dst, port))
+        data, _ = sock.recvfrom(65535)
+        if not data.startswith(b"pong:"):
+            raise SystemExit("unexpected UDP reply: %r" % (data,))
+        time.sleep(delay)
+    print("stream-ok")
+
+
+def client_tcp_stream(src, dst, port, count, delay):
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    sock.bind((src, 0))
+    sock.settimeout(TIMEOUT)
+    sock.connect((dst, port))
+    for _ in range(count):
+        sock.sendall(b"probe")
+        data = sock.recv(65535)
+        if not data.startswith(b"pong:"):
+            raise SystemExit("unexpected TCP reply: %r" % (data,))
+        time.sleep(delay)
+    sock.close()
+    print("stream-ok")
+
+
 def main():
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
@@ -71,6 +103,12 @@ def main():
         client_udp(sys.argv[2], sys.argv[3], int(sys.argv[4]))
     elif mode == "client-tcp":
         client_tcp(sys.argv[2], sys.argv[3], int(sys.argv[4]))
+    elif mode == "client-udp-stream":
+        client_udp_stream(sys.argv[2], sys.argv[3], int(sys.argv[4]),
+                          int(sys.argv[5]), float(sys.argv[6]))
+    elif mode == "client-tcp-stream":
+        client_tcp_stream(sys.argv[2], sys.argv[3], int(sys.argv[4]),
+                          int(sys.argv[5]), float(sys.argv[6]))
     else:
         raise SystemExit("unknown mode: %s" % mode)
 

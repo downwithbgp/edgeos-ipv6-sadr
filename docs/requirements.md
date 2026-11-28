@@ -1,8 +1,11 @@
 # Requirements and routing contract
 
-**Status:** architecture-phase contract. The recommended mechanism is in
-[`architecture/ADR-0001-routing-model.md`](architecture/ADR-0001-routing-model.md). Implementation and
-hardware qualification are pending.
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
+**Status:** v0.1.0 implementation complete off-device; hardware qualification pending. The accepted
+mechanism is in [`architecture/ADR-0001-routing-model.md`](architecture/ADR-0001-routing-model.md);
+evidence and gates are in [`v0.1.0-evidence.md`](v0.1.0-evidence.md). No compatibility claim exists.
 
 This document is normative for the v0.1.0 architecture. "MUST", "MUST NOT", "SHOULD" and "MAY" are
 used in their usual engineering sense.

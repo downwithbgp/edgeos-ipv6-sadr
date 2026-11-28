@@ -1,8 +1,28 @@
 # ADR-0001 — IPv6 SADR routing model
 
-**Status:** proposed for architecture review. Implementation and hardware qualification are pending.
+**Status:** architecture accepted; v0.1.0 implementation complete off-device and under review.
+Hardware qualification is pending and separately authorized.
 **Date:** 2026-11-27
 **Target:** Ubiquiti EdgeRouter X / ER-e50, EdgeOS 3.0.1 build 5862409, Linux 4.14.54-UBNT, mipsel.
+
+## v0.1.0 implementation status (2026-11-27)
+
+The accepted model is implemented on `feat/v0.1.0` (`22ee8fb`, `b3c12ea`, `934b97f`, `c2304db`,
+`2d25ea6`): internal whitelist table `10000`, provider tables, permanent terminal guards at slot 6,
+provider-table internal guards, active/staging pairs 0/1 and 2/3, conservative kernel-connected
+internal classification, declarative active-config reconciliation with generation recheck,
+journal/manifest/status, health including `orphaned-guard`, early boot guard, monitor and a Debian
+package.
+
+Implementation note: the operational route diagnostic uses named selectors
+(`show ipv6-sadr route source <source> destination <destination>`) because adjacent positional tags
+were not evidenced in the inspected vendor templates. The CLI form is
+`vyatta-ipv6-sadr route --source ... --destination ...`.
+
+Evidence is in [`../v0.1.0-evidence.md`](../v0.1.0-evidence.md); the qualification and migration
+designs are separate documents. Target configuration-engine priority/visibility/rollback, kernel
+4.14 RPDB, hardware offload and source selection remain Unverified. Milestones M4/M5/M6 are
+post-v0.1.0.
 
 ## 1. Context
 
@@ -25,21 +45,22 @@ rule template, no terminal guard and no table-route lifecycle repair.
 
 Adopt **RPDB with a global internal whitelist table and per-policy provider tables**:
 
-* The internal whitelist table contains only connected routes and exact configured internal
-  prefixes, each with a terminal per-prefix `unreachable` guard. It has no default.
+* The internal whitelist table contains connected routes on explicitly declared internal
+  interfaces plus exact configured internal prefixes, each with a terminal per-prefix
+  `unreachable` guard. It has no default. Unknown interfaces are not trusted; provider-facing
+  interfaces are excluded.
 * Each policy has an extension-owned provider table containing the provider route and a terminal
   `unreachable default` guard.
-* Each source prefix gets two rules: `from S lookup internal`, then `from S lookup provider_table`.
-  A source that matches no policy uses native routing.
-* A first-application temporary terminal rule blocks a previously unconstrained source while its
-  first policy is installed. It is removed only after the permanent rules and guards verify.
+* Each source prefix gets two lookup rules (`from S lookup internal`, then
+  `from S lookup provider_table`) plus a permanent terminal source guard (`from S unreachable`)
+  after them. A source that matches no policy uses native routing.
 * Source rules are ordered longest-prefix-first. A policy may have multiple source prefixes; they
   share the provider table.
 * The extension owns only its tables, exact rules, exact routes and a route protocol marker. It never
   flushes a table or the RPDB and never writes unrelated `main` routes.
-* A small event-driven reconciler applies desired state from native
-  `protocols ipv6-sadr` configuration, verifies effective state, and repairs extension-owned routes
-  after netdevice recreation.
+* A small event-driven reconciler uses the active EdgeOS configuration as desired state, verifies
+  kernel realization and repairs extension-owned routes after netdevice recreation. A committed
+  snapshot is used only by the early boot guard.
 
 The internal whitelist is the central decision. A `main` lookup with `suppress_prefixlength 0` is
 not a whitelist: any more-specific route under an exception, including an external BGP route through
@@ -80,7 +101,7 @@ Tentative values, to be re-validated by target collision analysis and the v0.1.0
 
 | Object | Value | Purpose |
 |---|---|---|
-| Internal table | `10000` | Connected + exact internal routes and per-prefix guards |
+| Internal table | `10000` | Connected routes on declared internal interfaces + exact internal routes and per-prefix guards |
 | Provider tables | `10001–19999` | One table per policy; auto-allocated or explicit |
 | Rule priorities | `20000–21031` | Source rules below `main` (32766) |
 | Route protocol marker | `194` | Extension ownership aid, not a security boundary |
@@ -88,12 +109,20 @@ Tentative values, to be re-validated by target collision analysis and the v0.1.0
 Provider table allocation: a stable hash of the policy name into the range, with collision refusal;
 the operator may set `table` explicitly. Rule priority:
 `20000 + (128 - prefix_length) * 8 + slot`. Slots `0/1` and `2/3` are the active and standby
-internal/provider pairs; slot `7` is the temporary first-application guard. The stride is 8, so
-every more-specific prefix's rules precede every less-specific prefix's rules. Same-length prefixes
-are disjoint and may share slots; exact duplicate source prefixes across policies are rejected. The
-standby pair is used for an update: install there, perform a structural/ownership/table check (the
-standby is behind the active pair and cannot be exercised end to end), remove the active pair, and
-record the new active pair. Post-swap safety rests on the new table guard.
+internal/provider pairs; slot `6` is the permanent terminal source guard (`from S unreachable`);
+slot `7` is reserved. The stride is 8, so every more-specific prefix's rules precede every
+less-specific prefix's rules. Same-length prefixes are disjoint and may share slots; exact duplicate
+source prefixes across policies are rejected.
+
+The terminal guard is installed before a source is constrained and remains for the policy lifetime.
+It protects against complete provider-table disappearance, a missing table default, partial rule
+installation and interruption. It does not protect against arbitrary privileged deletion of all
+rules/tables or malicious foreign state; that is an explicit limit.
+
+On update, install the new table/guards/route, then the free pair, perform a structural/ownership/table
+check, then remove the old pair. If the free pair is lower priority it takes effect after the new
+table is verified; if higher, the old pair remains until removal. The terminal guard stays throughout.
+Post-swap safety rests on the new table guard and the terminal source guard.
 
 Native `protocols static table` uses `1–200`; the manual proof of concept uses table `41913` and
 rules `10410–10414`. The extension does not use or modify those objects. A rule in the managed range
@@ -103,8 +132,8 @@ not claim enforcement or delete the foreign rule.
 
 ### 4.2 Internal whitelist
 
-For every declared internal prefix and every connected route on an interface that is not a
-policy egress/next-hop interface:
+For every declared internal prefix and every connected route on an interface listed in
+`internal-interface` (and not used by any policy):
 
 ```text
 table 10000:
@@ -112,10 +141,12 @@ table 10000:
     unreachable <prefix> metric 4096 proto 194
 ```
 
-* Connected routes are refreshed on link/address events.
-* A provider-facing transfer link is never auto-whitelisted. A connected route on a policy
-  egress/next-hop interface must be declared explicitly if it is truly internal; otherwise a
-  constrained source could cross to the other provider's on-link subnet.
+* Connected routes are refreshed on link/address events. Unknown interfaces are not trusted;
+  only `internal-interface` declarations create auto-whitelisting.
+* A provider-facing transfer link is never auto-whitelisted. An interface referenced by any policy
+  is excluded; declaring it as an internal interface is a configuration error. A connected route on
+  a policy egress/next-hop interface must be declared explicitly if it is truly internal; otherwise
+  a constrained source could cross to the other provider's on-link subnet.
 * A configured internal prefix is mirrored from the **exact** main-table route. More-specific routes
   under it are not copied. If the exact route is missing or ambiguous/ECMP, v0.1.0 reports the
   condition and installs only the guard; the operator can declare a more specific prefix or a single
@@ -157,11 +188,13 @@ For each source prefix `S` in a policy with provider table `T`:
 ```text
 from S lookup 10000   pref p_internal
 from S lookup T       pref p_provider
+from S unreachable    pref p_terminal
 ```
 
 A source with no matching policy reaches the native `main` rule. A more-specific source policy is
-placed before every less-specific policy. Destination exceptions are global in v0.1.0; per-policy
-exception tables are a future extension.
+placed before every less-specific policy. The terminal guard is after the policy's lookups and
+before `main`; it remains when the source rules/tables are partially lost. Destination exceptions are
+global in v0.1.0; per-policy exception tables are a future extension.
 
 ### 4.5 Failure and mutation ordering
 
@@ -170,31 +203,32 @@ The invariant once a source is covered by an effective policy:
 > At every interruption point the source is on its intended provider, on the previous effective
 > provider, or blocked. It is never on an unauthorized provider.
 
-**First application for an unconstrained source:** verify ownership; install a temporary
-`from S unreachable` rule; ensure the internal table/guards; install the provider guard and route;
-install the permanent rules; verify; remove the temporary rule. If the commit fails before the
-policy is effective, restore the previous effective state and remove the temporary rule; if
-restoration fails, leave the source blocked and report `failed`.
+**First application for an unconstrained source:** verify ownership; install the permanent terminal
+`from S unreachable` guard at slot 6; ensure the internal table/guards; install the provider table
+guard and route; install the active internal/provider pair; verify. The terminal guard remains. If a
+step fails, leave the guard and report `protected`/`incomplete`; if the commit is not effective and
+the previous state must be restored, restore the previous state and remove only the guard installed
+for this failed application after the previous state is verified. A crash is handled by
+active-config reconciliation; the monitor never treats an uncommitted snapshot as authority.
 
 **New more-specific policy under an existing broader policy:** keep the broader policy effective;
-build the new table/guard/route; install the new rules in the inactive pair; perform a
-structural/ownership/table check. No temporary guard is needed because the broader policy remains
-valid throughout.
+install the new terminal guard first; build the new table/guard/route; install the free pair;
+perform a structural/ownership/table check. The broader policy remains valid throughout.
 
-**Update:** build the new table/guard/route; install the new rules in the inactive pair; perform a
-structural/ownership/table check; remove the active pair and update the manifest. The old pair
-remains effective until it is removed. If the process dies before cleanup, the old pair still
-handles; reconciliation completes the transition. If it dies after cleanup, the new pair and its
-table guard handle the source.
+**Update:** the terminal guard stays. Build the new table/guard/route; install the free pair;
+perform a structural/ownership/table check; remove the active pair and update the manifest. If the
+free pair is lower priority it takes effect after the new table is verified; if higher, the old pair
+remains until removal. If the process dies before cleanup, the old pair still handles; after cleanup
+the new pair and its table guard, plus the terminal guard, handle the source.
 
-**Delete:** remove the provider route but keep the terminal guard and rules; remove the source rules
-(intentional unconstraining); remove the table/guard. If the process dies after the provider route
-removal, the source is blocked. Deleting a policy is the explicit way to restore native routing.
+**Delete:** remove the provider route but keep the provider table guard, source rules and terminal
+guard; remove the active/standby source rules; remove the terminal guard last; then clean the table.
+If interrupted, the source is blocked. Deleting a policy is the explicit way to restore native
+routing.
 
-**Disable:** keep the internal and provider rules, withdraw the provider route, retain the terminal
-guard. Internal traffic works; external is blocked; health is `disabled`. Deleting the policy is
-required to restore native external routing. A disabled policy MUST remain disabled across
-reconciliation and interface recreation; the provider route MUST NOT be restored.
+**Disable:** keep the internal/provider rules and terminal guard; withdraw the provider route.
+Internal traffic works; external is blocked; health is `disabled`. A disabled policy remains disabled
+across reconciliation and interface recreation; the provider route is not restored.
 
 **Package removal:** refuse while configured policies exist. If no policies exist, remove only
 extension-owned objects. Never silently remove an active policy in a way that permits cross-provider
@@ -202,39 +236,46 @@ egress.
 
 ### 4.6 Ownership and collision handling
 
+* Desired state for reconciliation is the **active configuration** (monitor) or the **working
+  configuration** (commit action). A committed snapshot is only the early boot guard's input; a
+  pending/failed snapshot is not authority.
 * A managed table must be empty or contain only extension-owned routes. Destructive action requires
-  agreement of table, exact prefix set, `proto 194` and the manifest. A marker-only match with a
-  wrong prefix set is a conflict.
+  agreement of table, exact prefix/type set, `proto 194` and the desired/expected set; the manifest
+  alone is insufficient. A marker-only match with a wrong prefix set is a conflict.
 * A foreign route in a managed table or a foreign rule in the managed priority range is a conflict
   and is refused. A foreign rule before the range that can match a configured source is reported as
   `shadowed`; the policy is not effective, and the foreign rule is never deleted. Shadow detection
   considers overlap, `from all` and rules whose match is not source-only.
-* The manifest is advisory; the kernel is authoritative. The reconciler re-verifies before cleanup.
+* The manifest records owned tables/prefixes/active pairs but is advisory. The journal records the
+  planned transaction but never authorizes deletion; recovery recomputes the plan from active config
+  and observed state and re-verifies ownership.
 * No `ip rule flush`, no `ip route flush table`, no unrelated `main` mutation.
 * Installation never adopts the manual table 41913 or rules 10410–10414.
 
 ### 4.7 Lifecycle and reconciliation
 
-* `protocols ipv6-sadr` runs at commit priority 500 (recommendation), after interfaces/addresses and
-  static routes. Its `end:` action reads the working configuration with `exists`/`returnValue`,
-  writes an atomic desired-state snapshot, applies the guarded sequence, verifies and records
-  effective state. It does not rely on `existsEffective` for the still-executing subtree.
-* A small event-driven monitor reads the snapshot and reconciles on netdevice link/address events
-  and on changes to the exact internal prefixes. The candidate event source is `ip -6 monitor link`
-  plus `ip -6 monitor addr` (and a filtered route monitor) under a systemd service, or a narrow
-  netlink helper if the target monitor output is unreliable. It does not poll. A lock serializes
-  commit and monitor. Target monitor/systemd support is a named gate.
-* Boot: the config engine's `end:` action runs on boot configuration load. The provider table guard is
-  installed before the source rules, so later dependency failures cannot create cross-provider
-  egress. The window before the first reconciliation is a named non-guarantee unless an early boot
-  guard service, ordered before WAN forwarding, is implemented. Target ordering is an open gate.
-* An interface recreated with a new ifindex loses its routes. The guard remains; the monitor
-  restores the provider/internal routes. If a previous next hop no longer exists, the source stays
-  protected and the health state reports the dependency.
-* A disabled policy is not a route-restoration trigger: the provider route remains absent across
-  recreation; internal reachability remains and external traffic stays blocked.
-* A process may die between mutations. Guards live in tables, not process memory; restart
-  reconciliation converges.
+* `reconcile-working` runs at commit priority 500. It reads the working configuration with
+  `listNodes`/`returnValue`, treats API diagnostics as hard failures, validates, plans, applies,
+  verifies and writes a committed snapshot only after success. It does not rely on
+  `existsEffective` for the still-executing subtree.
+* The monitor reads the **active configuration** with `listActiveNodes`/`returnActiveValue` outside a
+  commit. A failed commit does not change active config, so a stale snapshot cannot overwrite a
+  newer committed configuration. The monitor refreshes the committed snapshot from active config on
+  startup and after changes; the snapshot is for the early boot guard only.
+* The event source is `ip -6 monitor link addr route` (or a narrow netlink helper if target output is
+  unreliable). Events are coalesced for one second. A periodic full resynchronization (60 seconds)
+  covers lost notifications. A lock serializes commit and monitor mutations; the desired generation
+  is re-checked immediately before apply. Self-generated events are handled by idempotent
+  reconciliation and coalescing. The monitor restarts its child with bounded backoff and systemd
+  restarts the monitor.
+* Boot: `edgeos-ipv6-sadr-guard.service` is ordered before `vyatta-router.service` and reads the
+  committed snapshot to install terminal guards only. The full reconcile follows config load. The
+  ordering and snapshot freshness are mandatory qualification gates; the window before the guard
+  runs remains a named non-guarantee until verified on hardware.
+* An interface recreated with a new ifindex loses its routes. The terminal guard remains; the
+  monitor restores provider/internal routes. A disabled policy is not a route-restoration trigger.
+* A process may die between mutations. Guards live in rules/tables, not process memory; the journal
+  is diagnostic and restart reconciliation converges from active config and observed state.
 
 ### 4.8 Native configuration model
 
@@ -243,6 +284,8 @@ Illustrative proposed syntax (not final until the v0.1.0 template review):
 ```text
 protocols {
     ipv6-sadr {
+        internal-interface switch0.10
+        internal-interface switch0.20
         destination-exception 2001:db8:1::/64
         destination-exception 2001:db8:100::/64
         destination-exception 2001:db8:200::/56
@@ -268,10 +311,14 @@ protocols {
 
 Semantics:
 
-* `destination-exception` is global and exact. Connected routes on non-policy interfaces are
-  automatic; provider-facing transfer links are excluded. A connected route on a policy interface
-  must be declared explicitly if it is truly internal.
-* `source-prefix` is a tag child and may repeat. Exact duplicates across policies are invalid.
+* `internal-interface` declares the only interfaces whose connected routes are auto-whitelisted.
+  Unknown interfaces are not trusted. An interface used by a policy cannot be an internal
+  interface. Provider-facing transfer links are never auto-whitelisted.
+* `destination-exception` is global and exact. Its exact main-table route is mirrored; more-specific
+  routes are not. A route on a policy interface, an ECMP/ambiguous exact route, or a gateway without
+  a covering internal/connected route is rejected or guard-only.
+* `source-prefix` is a tag child and may repeat. Exact duplicates across policies are invalid;
+  overlapping prefixes are ordered longest-first.
 * `next-hop` is optional for an interface-only route; `interface` is required for a link-local next
   hop and for global-next-hop resolution.
 * `table` is optional; auto-allocation is deterministic and collision-checked.
@@ -279,9 +326,7 @@ Semantics:
 * The subtree supports discovery, tab completion, validation, `show configuration commands`,
   `compare`, `commit`, `save`, deletion, rollback and commit-confirm through the normal engine.
 
-### 4.9 Diagnostics
-
-Proposed operational commands:
+### 4.9 Diagnostics and health
 
 ```text
 show ipv6-sadr status
@@ -292,9 +337,33 @@ show ipv6-sadr health [--json]
 
 The path diagnostic uses `ip -6 route get <destination> from <source> [iif <interface>]` and explains
 the selected table/rule. The target `ip -j` is unreliable for route/rule objects; the helper parses
-stable text and emits its own JSON. Health uses the enum in
-[`../requirements.md`](../requirements.md) and has meaningful exit codes. Route presence is never
-reported as end-to-end provider connectivity.
+stable text and emits its own JSON.
+
+Health separates **intent** (configured/valid/disabled), **realization** (owned rules/tables/routes/
+guards present), **effectiveness** (no shadow/conflict; guards and precedence) and **reachability**
+(`unverified` by default, `next-hop-unresolved` only from neighbour state). States are `effective`,
+`incomplete`, `dependency-unavailable`, `protected`, `shadowed`, `conflict`, `failed`, `disabled`;
+exit codes 0/2/3/4/5/6/7/8. Route presence is never reported as end-to-end provider connectivity.
+
+### 4.10 Implementation and source selection
+
+Use Perl 5.24 (already present) plus the existing `ip` command; no new runtime or routing daemon. Split
+responsibilities into the `EdgeOS::IPv6SADR` module and a CLI for configuration validation,
+reconciliation, monitor, boot guard, status/health and route lookup. Parse text; do not depend on
+target route/rule JSON. No new kernel module or vendor file change.
+
+Forwarded traffic, explicitly source-bound local traffic and unbound router-originated traffic are
+distinct. The implementation does not modify `gai.conf`, address labels, RAs or DHCPv6. Target
+source-selection tests and RFC 6724/8043/8028/8678 analysis are qualification deliverables; no
+automatic optimal-source claim.
+
+### 4.11 v0.1.0 refinements
+
+The normative v0.1.0 refinements are in [`../v0.1.0-refinements.md`](../v0.1.0-refinements.md).
+They supersede conflicting text above, in particular: config.boot-derived boot guards with `/run`
+intent instead of a persistent snapshot; active-config monitor authority; provider-table unreachable
+guards for internal prefixes; explicit active/staging cutover; orphaned-guard health; disabled
+creation/prefix shrink/exception removal ordering; and `/run` runtime state.
 
 ## 5. Alternatives considered
 

@@ -1,0 +1,7 @@
+tag:
+type: txt
+help: SADR policy binding source prefixes to a provider egress
+val_help: <name>; Policy name (letters, digits, dot, dash, underscore)
+syntax:expression: pattern $VAR(@) "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$" ; "invalid policy name"
+commit:expression: $VAR(./source-prefix/) != "" ; "policy $VAR(@) requires at least one source-prefix"
+commit:expression: $VAR(./interface/) != "" ; "policy $VAR(@) requires an interface"

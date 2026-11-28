@@ -1,23 +1,29 @@
 # Repository instructions for agents
 
+
+> **v0.1.0 refinements:** `docs/v0.1.0-refinements.md` is normative and supersedes conflicting text in this document.
+
 ## Mission and current phase
 
 `edgeos-ipv6-sadr` provides native, persistent IPv6 source-address-dependent routing (SADR) on
 Ubiquiti EdgeOS without NAT66, NPTv6 or address translation.
 
-**Current phase: architecture review.** The architecture proposal, target investigation, experiment
-record and executable Linux proof of concept are complete. **Do not** produce a production Debian
-package, modify the maintainer's live router configuration, install packages on it, tag a release or
-publish artifacts until the architecture review gate is passed.
+**Current phase: v0.1.0 implementation review.** The architecture is accepted and the production
+implementation, templates, services, tests and package are complete off-device on branch
+`feat/v0.1.0`. Independent review and the final gates are in progress. Do not install on the
+production router, migrate the manual table/rules, publish a release or claim hardware qualification
+in this phase.
 
 Current artifacts:
 
-* `docs/architecture/ADR-0001-routing-model.md` — proposed internal-whitelist + provider-table model.
-* `docs/requirements.md` — normative routing contract and non-guarantees.
-* `docs/investigation/2026-11-27-platform-investigation.md` — read-only target evidence.
-* `docs/investigation/2026-11-27-experiments.md` — generic-Linux experiment record.
-* `test/integration/netns-sadr.sh` — 65-assertion proof of concept, including 42 packet-path probes
-  (generic Linux only).
+* `docs/architecture/ADR-0001-routing-model.md` — accepted model and v0.1.0 implementation status.
+* `docs/v0.1.0-evidence.md` — test, package and resource evidence; known gates.
+* `docs/hardware-qualification-plan.md`, `docs/migration-plan.md` — design only; separate authorization.
+* `src/lib/EdgeOS/IPv6SADR*.pm`, `src/vyatta-ipv6-sadr` — production reconciler and CLI.
+* `templates/`, `systemd/`, `debian/` — native configuration/op integration, services and package.
+* `test/unit/` — 619 unit/property/failure assertions; `test/integration/` — 145-assertion namespace lab.
+* `docs/requirements.md`, `docs/security-invariants.md`, `docs/operations.md`,
+  `docs/testing-strategy.md`, `docs/platform-compatibility.md` — normative contracts and status.
 
 ## Hard constraints
 
@@ -67,8 +73,12 @@ Keep raw router output and real addresses out of the repository.
 ```text
 spec/architecture-phase/   planning artifacts for the current phase
 docs/                      durable requirements, investigation, architecture, testing strategy
-test/integration/          privileged network-namespace proof of concept
-test/unit/                 fast, unprivileged checks
+src/                       production Perl module and CLI
+templates/                 EdgeOS configuration and operational templates
+systemd/                   monitor and early boot guard units
+debian/                    Debian packaging
+test/integration/          privileged network-namespace tests
+test/unit/                 fast, unprivileged and property tests
 .github/workflows/         CI
 ```
 

@@ -40,9 +40,18 @@ sub check_line {
     # fixtures. Do not use it for prose examples.
     return if $line =~ /doc-check:\s*ignore-line/;
 
+    # Mask known Perl module names, not arbitrary C++-like tokens: a genuine
+    # IPv6 address such as CAFE::1 must still be checked.
+    my @module_tokens = qw(JSON::PP Digest::SHA IO::Select IPC::Open3
+                           NetAddr::IP Test::More File::Path Time::HiRes
+                           Sys::Syslog Getopt::Long File::Temp);
+    my $module_re = join '|', map { quotemeta } @module_tokens;
+    my $scan = $line;
+    $scan =~ s/\b(?:$module_re)\b/ /g;
+
     # IPv6: at least two colons. This lexical filter is intentionally broad;
     # inet_pton performs the real validation.
-    while ($line =~ /(?<![0-9A-Fa-f:])([0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,})(?![0-9A-Fa-f:])/g) {
+    while ($scan =~ /(?<![0-9A-Fa-f:])([0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,})(?![0-9A-Fa-f:])/g) {
         my $candidate = $1;
         $candidate =~ s/^\[//;
         $candidate =~ s/\]$//;
@@ -56,7 +65,7 @@ sub check_line {
 
     # IPv4: four dotted decimal octets. Version strings such as 1.2.3.4 are
     # also caught; use a TEST-NET range in documentation.
-    while ($line =~ /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?![\d.])/g) {
+    while ($scan =~ /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?![\d.])/g) {
         my $candidate = $1;
         my $packed = inet_pton(AF_INET, $candidate);
         next unless defined $packed;
