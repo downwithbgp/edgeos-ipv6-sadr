@@ -74,6 +74,5 @@ authorized. PR #1 remains draft.
 - R1 execution: A1 20/20 + 10/10; B 0/20 + 10/10; A2 20/20 + control 20; exact rule deletion and
   verified absence, timer teardown, runtime-directory cleanup and controller cleanup all PASS; target
   and controller final state clean; protected rules/table unchanged.
-- CI: the push of this phase triggers the repository workflow; the run IDs and conclusion are
-  recorded in the follow-up CI evidence commit once available. No CI conclusion is claimed before
-  the runs finish.
+- CI: push run 46097789920 and PR run 46097794106 are both **success** on `6d65e83` (`lint-and-unit`,
+  `netns`, `package`); the runs are linked in `docs/ci-evidence.md`.

@@ -171,3 +171,24 @@ the standalone A1 baseline is recorded in `docs/r1-execution-evidence.md` (Stage
 source/package content changed in Phase V-C; the package hash remains
 `f3bcd7c2bb50765b668703c52355370782c6bd254cface89059ce5fe8d38a93f`. PR #1 remains draft and
 unmerged; no release was published.
+
+## 12. Phase VI-D runs (R1 completion and acceleration compatibility)
+
+Phase VI-D completes the lab-VXLAN R1 (A1/B/A2 + all cleanup layers), adds the conservative
+acceleration compatibility boundary and packages the detector, and prepares the G1a–G1e/G2, request C
+and R2 documents.
+
+| Trigger | Run | Result |
+|---|---|---|
+| push `feat/v0.1.0` (`6d65e83`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46097789920> | success: `lint-and-unit`, `netns` (5m3s), `package` (33s) |
+| pull request #1 (`6d65e83`) | <https://github.com/downwithbgp/edgeos-ipv6-sadr/actions/runs/46097794106> | success: `lint-and-unit`, `netns`, `package` |
+
+Local evidence for `6d65e83`: `make test` (11 unit files / 642 assertions; qualification cleanup
+28/0, identity 14/14, manifest 4/4), `make test-package` (package lifecycle 13/0, reproducible build
+and artifact validation), shellcheck clean. The executed VI-D R1 binding is adapter `7b4322ca…`,
+cleanup `3c329ca6…`, install `dc5e4e4d…`, manifest `4be0761b…`; post-run harness corrections
+produced the current files (adapter `00d8880b…`, manifest `1d1b0b43…`, cleanup/install unchanged) as
+recorded in the phase documents. R1 dataplane: A1 20/20 + 10/10, B 0/20 + 10/10, A2 20/20 + control
+20; rule/timer/runtime/controller cleanup pass; the adapter result reports fail only on external
+SIGPIPE (rc=141) after completion; acceleration UNKNOWN. PR #1 remains draft and unmerged; no
+release was published.
