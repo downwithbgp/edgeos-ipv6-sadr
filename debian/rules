@@ -24,6 +24,8 @@ override_dh_auto_install:
 	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Health.pm
 	install -m 0644 src/lib/EdgeOS/IPv6SADR/Monitor.pm \
 	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Monitor.pm
+	install -m 0644 src/lib/EdgeOS/IPv6SADR/Acceleration.pm \
+	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Acceleration.pm
 	install -m 0644 src/lib/EdgeOS/IPv6SADR/Reconcile.pm \
 	    $(PKGDIR)/usr/share/perl5/EdgeOS/IPv6SADR/Reconcile.pm
 	install -d $(PKGDIR)/opt/vyatta/share/vyatta-cfg/templates/protocols

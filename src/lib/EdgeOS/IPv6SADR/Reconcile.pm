@@ -505,7 +505,9 @@ sub _health_after_apply {
     my $owned = $self->owned_state();
     my $obs = $self->observe($desired, $owned);
     my $exp = $self->build_expected($desired, $obs);
-    return $self->health($desired, $obs, $owned, $exp);
+    my $health = $self->health($desired, $obs, $owned, $exp);
+    $self->_acceleration_fields($health, $desired);
+    return $health;
 }
 
 sub reconcile {
@@ -524,6 +526,17 @@ sub reconcile {
                 : $self->read_desired($mode);
             $last_gen = $desired->{generation} // '';
             my $owned = $self->owned_state();
+            my $acc = $self->acceleration_state();
+            if (@{ $desired->{policies} // [] } && $acc->{state} ne 'compatible') {
+                my $active = @{ $owned->{rules} // [] } ? 1
+                    : (keys %{ $owned->{tables} // {} } ? 1 : 0);
+                if (!$active) {
+                    die "hardware acceleration is not compatible with SADR activation: "
+                        . "$acc->{detail}; disable HWNAT and retry\n";
+                }
+                $self->logmsg("CRITICAL: hardware acceleration is not compatible; "
+                    . "SADR invariants are not enforceable for already-bound flows: $acc->{detail}");
+            }
             my $obs = $self->observe($desired, $owned);
             my $exp = $self->build_expected($desired, $obs);
             die join("\n", @{ $exp->{conflicts} }) . "\n" if @{ $exp->{conflicts} };

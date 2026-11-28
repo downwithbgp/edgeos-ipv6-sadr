@@ -166,6 +166,13 @@ LOCAL_CLEANUP_STATUS=not_attempted
 LOCAL_CLEANUP_DETAIL=""
 DEVICE_CLEANED=0
 DEVICE_CLEANUP_STATUS=not_attempted
+RULE_DELETED=0
+RULE_ABSENT=0
+RULE_CLEANUP_DETAIL="not_attempted"
+TIMER_TEARDOWN_STATUS=not_attempted
+TIMER_TEARDOWN_DETAIL=""
+RUNDIR_CLEANUP_STATUS=not_attempted
+RUNDIR_CLEANUP_DETAIL=""
 DEVICE_CLEANUP_DETAIL=""
 VERSION=""
 KERNEL=""
@@ -233,7 +240,7 @@ class_for_stage() {
         stage1) echo target_preflight ;;
         stage2) echo dataplane_baseline ;;
         boundary|deploy|b|a2) echo device_mutation ;;
-        cleanup|device_cleanup|controller_cleanup|exit_cleanup) echo cleanup ;;
+        cleanup|device_cleanup|controller_cleanup|exit_cleanup|rule_removal|device_teardown) echo cleanup ;;
         *) echo harness ;;
     esac
 }
@@ -358,68 +365,130 @@ cleanup_local() {
     return "$rc"
 }
 
-cleanup_device() {
-    [ "$DEVICE_CLEANED" -eq 1 ] && return 0
-    local had_e=0 rc=0 count timer_active timer_out timer_rc test_rc cleanup_rc=0
-    case $- in *e*) had_e=1 ;; esac
-    set +e
+remove_rule_and_verify() {
+    local cleanup_rc=0 count
+    RULE_DELETED=0
+    RULE_ABSENT=0
     if [ -z "$RUNDIR" ]; then
-        DEVICE_CLEANUP_STATUS=not_needed
-        DEVICE_CLEANUP_DETAIL="no device runtime directory was deployed"
-        DEVICE_CLEANED=1
-        [ "$had_e" -eq 1 ] && set -e
-        return 0
+        RULE_CLEANUP_DETAIL="no device runtime directory was deployed"
+        return 1
     fi
-    say "cleanup: exact rule deletion and verification"
+    say "rule removal: exact deletion and verification"
     rsudo "sh '$RUNDIR/r1-cleanup.sh' '$SELECTOR' '$PREF' '$RUNDIR/cleanup.log' '$RUNDIR'" >/dev/null 2>&1 || cleanup_rc=$?
     if ! count=$(rule_count); then
+        RULE_CLEANUP_DETAIL="rule read failed; device timer left armed"
+        return 1
+    fi
+    if [ "$count" -ne 0 ]; then
+        RULE_CLEANUP_DETAIL="cleanup_rc=$cleanup_rc; priority $PREF still present; device timer left armed"
+        return 1
+    fi
+    RULE_ABSENT=1
+    if [ "$cleanup_rc" -eq 0 ]; then
+        RULE_DELETED=1
+        RULE_CLEANUP_DETAIL="cleanup_rc=0; rule absent; exact deletion verified"
+    else
+        RULE_CLEANUP_DETAIL="cleanup_rc=$cleanup_rc; rule absent; deletion not performed by this cleanup run"
+    fi
+    rsudo "cat '$RUNDIR/cleanup.log'" >"$OUT/device-cleanup.log" 2>/dev/null || true
+    return 0
+}
+
+# Script-independent, validated removal of the exact experiment runtime
+# directory. Used when the deployed cleanup script is missing or fails; it
+# never follows symlinks and never recurses.
+safe_runtime_dir_remove() {
+    local meta rc=0
+    case "$RUNDIR" in
+        /run/sadr-r1-[0-9]*-[0-9]*) ;;
+        *) return 2 ;;
+    esac
+    meta=$(rsudo "stat -c '%u %a' '$RUNDIR'" 2>/dev/null) || return 3
+    [ "$meta" = "0 700" ] || return 3
+    rsudo "find '$RUNDIR' -mindepth 1 -maxdepth 1 -type f -exec rm -f {} +" >/dev/null 2>&1 || rc=4
+    rsudo "find '$RUNDIR' -mindepth 1 -maxdepth 1 -type l -exec rm -f {} +" >/dev/null 2>&1 || rc=4
+    if [ -n "$(rsudo "find '$RUNDIR' -mindepth 1 -maxdepth 1 -print -quit" 2>/dev/null)" ]; then
+        rc=4
+    fi
+    if [ "$rc" -eq 0 ]; then
+        rsudo "rmdir '$RUNDIR'" >/dev/null 2>&1 || rc=4
+    fi
+    if [ "$rc" -eq 0 ] && rsudo "test -e '$RUNDIR'" >/dev/null 2>&1; then
+        rc=4
+    fi
+    return "$rc"
+}
+
+teardown_device() {
+    [ "$DEVICE_CLEANED" -eq 1 ] && return 0
+    local rc=0 timer_out timer_rc cleanup_rc=0 test_rc
+    case "$RUNDIR" in
+        /run/sadr-r1-[0-9]*-[0-9]*) ;;
+        *)
+            DEVICE_CLEANUP_STATUS=fail
+            DEVICE_CLEANUP_DETAIL="unexpected runtime-directory path: $RUNDIR"
+            RUNDIR_CLEANUP_STATUS=fail
+            RUNDIR_CLEANUP_DETAIL="refused unexpected path"
+            return 1
+            ;;
+    esac
+    if [ "$RULE_ABSENT" -ne 1 ]; then
         DEVICE_CLEANUP_STATUS=fail
-        DEVICE_CLEANUP_DETAIL="rule read failed; device timer left armed"
+        DEVICE_CLEANUP_DETAIL="rule absence not verified; teardown refused"
+        return 1
+    fi
+    say "teardown: timer stop and runtime-directory cleanup"
+    rsudo "systemctl stop sadr-r1-cleanup.timer" >/dev/null 2>&1 || true
+    rsudo "systemctl stop sadr-r1-cleanup.service" >/dev/null 2>&1 || true
+    rsudo "systemctl reset-failed sadr-r1-cleanup.service" >/dev/null 2>&1 || true
+    timer_out=$(rssh "systemctl show sadr-r1-cleanup.timer -p ActiveState --value" 2>/dev/null)
+    timer_rc=$?
+    if [ "$timer_rc" -ne 0 ]; then
+        TIMER_TEARDOWN_STATUS=fail
+        TIMER_TEARDOWN_DETAIL="cannot verify the cleanup timer state"
         rc=1
-    elif [ "$count" -ne 0 ]; then
-        DEVICE_CLEANUP_STATUS=fail
-        DEVICE_CLEANUP_DETAIL="cleanup_rc=$cleanup_rc; priority $PREF still present; device timer left armed"
+    elif [ "$timer_out" = "active" ]; then
+        TIMER_TEARDOWN_STATUS=fail
+        TIMER_TEARDOWN_DETAIL="cleanup timer is still active"
         rc=1
     else
-        rsudo "systemctl stop sadr-r1-cleanup.timer" >/dev/null 2>&1
-        rsudo "systemctl stop sadr-r1-cleanup.service" >/dev/null 2>&1
-        rsudo "systemctl reset-failed sadr-r1-cleanup.service" >/dev/null 2>&1
-        rsudo "cat '$RUNDIR/cleanup.log'" >"$OUT/device-cleanup.log" 2>/dev/null
-        # Remove every file (including logs created by the timer service), then
-        # the directory; an unknown leftover previously defeated rmdir.
-        rsudo "find '$RUNDIR' -mindepth 1 -maxdepth 1 -exec rm -f {} +" >/dev/null 2>&1
-        rsudo "rmdir '$RUNDIR'" >/dev/null 2>&1
-        timer_out=$(rssh "systemctl show sadr-r1-cleanup.timer -p ActiveState --value" 2>/dev/null)
-        timer_rc=$?
-        if [ "$timer_rc" -ne 0 ]; then
-            DEVICE_CLEANUP_STATUS=fail
-            DEVICE_CLEANUP_DETAIL="cannot verify the cleanup timer state"
+        TIMER_TEARDOWN_STATUS=pass
+        TIMER_TEARDOWN_DETAIL="timer not active"
+    fi
+    rsudo "sh '$RUNDIR/r1-cleanup.sh' --runtime-dir '$RUNDIR'" >/dev/null 2>&1 || cleanup_rc=$?
+    if [ "$cleanup_rc" -ne 0 ]; then
+        # The deployed script may be missing (failed deploy) or refuse; fall
+        # back to the validated, script-independent removal.
+        safe_runtime_dir_remove || cleanup_rc=$?
+    fi
+    if [ "$cleanup_rc" -ne 0 ]; then
+        RUNDIR_CLEANUP_STATUS=fail
+        RUNDIR_CLEANUP_DETAIL="runtime-directory cleanup rc=$cleanup_rc"
+        rc=1
+    else
+        rsudo "test -e '$RUNDIR'" >/dev/null 2>&1
+        test_rc=$?
+        if [ "$test_rc" -eq 0 ]; then
+            RUNDIR_CLEANUP_STATUS=fail
+            RUNDIR_CLEANUP_DETAIL="runtime directory remains"
+            rc=1
+        elif [ "$test_rc" -eq 255 ]; then
+            RUNDIR_CLEANUP_STATUS=fail
+            RUNDIR_CLEANUP_DETAIL="cannot verify runtime-directory removal"
             rc=1
         else
-            timer_active=$timer_out
-            if [ "$timer_active" = "active" ]; then
-                DEVICE_CLEANUP_STATUS=fail
-                DEVICE_CLEANUP_DETAIL="cleanup timer is still active"
-                rc=1
-            elif rsudo "test -e '$RUNDIR'"; then
-                DEVICE_CLEANUP_STATUS=fail
-                DEVICE_CLEANUP_DETAIL="device runtime directory $RUNDIR remains"
-                rc=1
-            else
-                test_rc=$?
-                if [ "$test_rc" -eq 255 ]; then
-                    DEVICE_CLEANUP_STATUS=fail
-                    DEVICE_CLEANUP_DETAIL="cannot verify that the device runtime directory was removed"
-                    rc=1
-                else
-                    DEVICE_CLEANUP_STATUS=pass
-                    DEVICE_CLEANUP_DETAIL="cleanup_rc=$cleanup_rc; rule absent; timer not active; runtime directory removed"
-                    DEVICE_CLEANED=1
-                fi
-            fi
+            RUNDIR_CLEANUP_STATUS=pass
+            RUNDIR_CLEANUP_DETAIL="runtime directory removed"
         fi
     fi
-    [ "$had_e" -eq 1 ] && set -e
+    if [ "$rc" -eq 0 ]; then
+        DEVICE_CLEANUP_STATUS=pass
+        DEVICE_CLEANUP_DETAIL="rule absent; timer=$TIMER_TEARDOWN_STATUS; runtime=$RUNDIR_CLEANUP_STATUS"
+        DEVICE_CLEANED=1
+    else
+        DEVICE_CLEANUP_STATUS=fail
+        DEVICE_CLEANUP_DETAIL="rule absent; timer=$TIMER_TEARDOWN_STATUS; runtime=$RUNDIR_CLEANUP_STATUS"
+    fi
     return "$rc"
 }
 
@@ -459,6 +528,13 @@ write_result() {
     add_env RESULT_B_CONTROL "$B_CONTROL"
     add_env RESULT_A2_MATCH "$A2_MATCH"
     add_env RESULT_A2_CONTROL "$A2_CONTROL"
+    add_env RESULT_RULE_DELETED "$RULE_DELETED"
+    add_env RESULT_RULE_ABSENT "$RULE_ABSENT"
+    add_env RESULT_RULE_CLEANUP_DETAIL "$RULE_CLEANUP_DETAIL"
+    add_env RESULT_TIMER_TEARDOWN_STATUS "$TIMER_TEARDOWN_STATUS"
+    add_env RESULT_TIMER_TEARDOWN_DETAIL "$TIMER_TEARDOWN_DETAIL"
+    add_env RESULT_RUNDIR_CLEANUP_STATUS "$RUNDIR_CLEANUP_STATUS"
+    add_env RESULT_RUNDIR_CLEANUP_DETAIL "$RUNDIR_CLEANUP_DETAIL"
     add_env RESULT_OFFLINK "$OFFLINK"
     add_env RESULT_ICMP6 "$ICMP_COUNT"
     add_env RESULT_WRONG_PROVIDER 0
@@ -563,6 +639,13 @@ result = {
         },
     },
     "cleanup": {
+        "rule": {"deleted": env("RESULT_RULE_DELETED") == "1",
+                 "absent": env("RESULT_RULE_ABSENT") == "1",
+                 "detail": env("RESULT_RULE_CLEANUP_DETAIL")},
+        "timer": {"status": env("RESULT_TIMER_TEARDOWN_STATUS", "not_attempted"),
+                  "detail": env("RESULT_TIMER_TEARDOWN_DETAIL")},
+        "runtime_dir": {"status": env("RESULT_RUNDIR_CLEANUP_STATUS", "not_attempted"),
+                        "detail": env("RESULT_RUNDIR_CLEANUP_DETAIL")},
         "local": {"status": env("RESULT_LOCAL_CLEANUP_STATUS", "not_attempted"),
                   "detail": env("RESULT_LOCAL_CLEANUP_DETAIL")},
         "device": {"status": env("RESULT_DEVICE_CLEANUP_STATUS", "not_attempted"),
@@ -626,13 +709,16 @@ on_exit() {
     trap - ERR EXIT INT TERM
     set +e
     if [ "$BOUNDARY" -eq 1 ] && [ "$DEVICE_CLEANED" -eq 0 ]; then
-        cleanup_device
+        remove_rule_and_verify || true
+        if [ "$RULE_ABSENT" -eq 1 ]; then
+            teardown_device || true
+        fi
     fi
     if [ "$TIMER_ARMED" -eq 1 ] && [ "$DEVICE_CLEANED" -eq 0 ] && [ "$BOUNDARY" -eq 0 ]; then
         rsudo "systemctl stop sadr-r1-cleanup.timer" >/dev/null 2>&1
     fi
     if [ -n "$RUNDIR" ] && [ "$DEVICE_CLEANED" -eq 0 ] && [ "$BOUNDARY" -eq 0 ]; then
-        rsudo "rm -f '$RUNDIR/r1-install.sh' '$RUNDIR/r1-cleanup.sh' '$RUNDIR/cleanup.log' '$RUNDIR/lock' '$RUNDIR/closed'; rmdir '$RUNDIR'" >/dev/null 2>&1
+        safe_runtime_dir_remove || true
     fi
     cleanup_local
     local cleanup_status=pass
@@ -1177,15 +1263,15 @@ execute_mutation() {
         fail device_mutation "control flow missing from the E2 capture during B"
     stage_done b pass "matching=0 control=$B_CONTROL/$CONTROL_N; exact rule body; timer active; E2 matching delta=0"
 
-    stage_enter device_cleanup "exact device cleanup and verification"
-    if cleanup_device; then
-        stage_done device_cleanup pass "$DEVICE_CLEANUP_DETAIL"
+    stage_enter rule_removal "exact rule deletion and verified absence"
+    if remove_rule_and_verify; then
+        stage_done rule_removal pass "$RULE_CLEANUP_DETAIL"
     else
-        stage_done device_cleanup fail "$DEVICE_CLEANUP_DETAIL"
-        fail cleanup "device cleanup failed: $DEVICE_CLEANUP_DETAIL"
+        stage_done rule_removal fail "$RULE_CLEANUP_DETAIL"
+        fail cleanup "rule removal failed; timer retained and no A2 probing: $RULE_CLEANUP_DETAIL"
     fi
-    count=$(rule_count) || fail cleanup "rule read failed after cleanup"
-    [ "$count" -eq 0 ] || fail cleanup "guard rule still present after cleanup"
+    count=$(rule_count) || fail cleanup "rule read failed after removal"
+    [ "$count" -eq 0 ] || fail cleanup "guard rule still present after removal"
     local restored_get
     restored_get=$(rssh_err "ip -6 route get $D from $SELECTOR iif $PREFIX_IF") ||
         fail device_mutation "route lookup failed after restore: $restored_get"
@@ -1207,6 +1293,14 @@ execute_mutation() {
     verify_forwarding A2
     verify_invariants A2 device_mutation
     stage_done a2 pass "matching=$A2_MATCH/$MATCH_N control=$A2_CONTROL; rule absent; route recovered; forwarding and invariants verified"
+
+    stage_enter device_teardown "timer teardown and runtime-directory cleanup"
+    if teardown_device; then
+        stage_done device_teardown pass "$DEVICE_CLEANUP_DETAIL"
+    else
+        stage_done device_teardown fail "$DEVICE_CLEANUP_DETAIL"
+        fail cleanup "device teardown failed after A2 evidence: $DEVICE_CLEANUP_DETAIL"
+    fi
 }
 
 # ---- run the selected stage set ----

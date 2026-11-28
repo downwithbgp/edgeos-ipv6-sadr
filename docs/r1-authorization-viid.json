@@ -1,0 +1,25 @@
+{
+  "schema": "sadr-qualification-authorization/1",
+  "authorization_reference": "Phase VI-D maintainer decision - one additional lab-VXLAN R1 mutating execution",
+  "device_id": "Ubiquiti EdgeRouter",
+  "device_fingerprint": "0896090dabbf415be33b51fe09e1edad5605e65febb95db9293bbe6b2d667440",
+  "profile": "canary",
+  "target_class": "production",
+  "test_ids": [
+    "R1-guard-only"
+  ],
+  "max_duration_seconds": 120,
+  "approved_mutation_scope": "one exact terminal rule: from fd42:901::a1/128 unreachable pref 21031 on the production ER-X over the permitted lab VXLAN path; no table, route, interface, firewall, offload, package or persistent configuration change",
+  "recovery": "device-local systemd-run timer armed before the rule; r1-cleanup.sh exact deletion and verification; foreign rule refused; runtime-directory cleanup restricted to the exact root-owned 0700 directory; controller verification required",
+  "not_after": "2026-11-28T02:08:59Z",
+  "artifact_sha256": "",
+  "adapter_sha256": "7b4322cab1c451f56934683c7c704ef55e39ebae6505c630dbcb9a1c8039f0db",
+  "cleanup_sha256": "3c329ca6b3dcd20e98f9a0dc0adff37db84c9a533954fadd18f70f5f84040c81",
+  "install_sha256": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f",
+  "execution_manifest": "docs/r1-execution-manifest.json",
+  "execution_manifest_sha256": "4be0761bcaa93092776ac2071d072a1969e5b1f3f2555d70d862cb2809d599c9",
+  "topology": "production ER-X over the existing permitted lab VXLAN; explicit controller interface/gateway override; no firewall change",
+  "status": "retired",
+  "consumed_utc": "2026-11-28T01:54:54Z",
+  "consumption_note": "Consumed by the single Phase VI-D lab-VXLAN R1 (mutation boundary crossed 2026-11-28T01:54:54Z); not reusable; a fresh candidate-bound authorization is required for any future execution."
+}

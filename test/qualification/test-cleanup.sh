@@ -228,5 +228,82 @@ else
     echo "FAIL: install partial failure was not reported (rc=$rc)" >&2; fail=$((fail + 1))
 fi
 
+# ---- runtime-directory cleanup: identity, ownership, mode, symlinks, bounded deletion ----
+RUN_ROOT="$TMP/run"
+mkdir -p "$RUN_ROOT"
+: >"$TMP/outside-file"
+mkdir -m 0700 "$TMP/outside-dir"
+safe_rd() { SADR_RUN_ROOT="$RUN_ROOT" SADR_RUNDIR_OWNER_UID="$(id -u)" \
+    sh "$ROOT/qualification/adapters/r1-cleanup.sh" --runtime-dir "$1"; }
+
+RD_OK="$RUN_ROOT/sadr-r1-1700000000-1111"
+mkdir -m 0700 "$RD_OK"; : >"$RD_OK/r1-install.sh"; : >"$RD_OK/cleanup.log"
+ln -s "$TMP/outside-file" "$RD_OK/link-file"
+ln -s "$TMP/outside-dir" "$RD_OK/link-dir"
+if safe_rd "$RD_OK" 2>"$TMP/rd-ok.log" && [ ! -e "$RD_OK" ] &&
+    [ -f "$TMP/outside-file" ] && [ -d "$TMP/outside-dir" ]; then
+    echo "PASS: runtime-dir removes the owned 0700 directory without following symlinks"
+    pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir valid removal or symlink containment" >&2; fail=$((fail + 1))
+fi
+if safe_rd "$RD_OK" 2>"$TMP/rd-absent.log"; then
+    echo "PASS: runtime-dir absent is idempotent"; pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir absent handling" >&2; fail=$((fail + 1))
+fi
+RD_MODE="$RUN_ROOT/sadr-r1-1700000001-1111"
+mkdir -m 0755 "$RD_MODE"
+if ! safe_rd "$RD_MODE" 2>"$TMP/rd-mode.log" && [ -d "$RD_MODE" ]; then
+    echo "PASS: runtime-dir refuses a non-0700 directory"; pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir mode check" >&2; fail=$((fail + 1))
+fi
+rmdir "$RD_MODE"
+if [ "$(id -u)" -ne 0 ]; then
+    RD_OWN="$RUN_ROOT/sadr-r1-1700000002-1111"
+    mkdir -m 0700 "$RD_OWN"
+    if ! SADR_RUN_ROOT="$RUN_ROOT" SADR_RUNDIR_OWNER_UID=0 \
+        sh "$ROOT/qualification/adapters/r1-cleanup.sh" --runtime-dir "$RD_OWN" \
+        2>"$TMP/rd-owner.log" && [ -d "$RD_OWN" ]; then
+        echo "PASS: runtime-dir refuses a foreign owner"; pass=$((pass + 1))
+    else
+        echo "FAIL: runtime-dir owner check" >&2; fail=$((fail + 1))
+    fi
+    rmdir "$RD_OWN"
+fi
+RD_LINK="$RUN_ROOT/sadr-r1-1700000003-1111"
+ln -s "$TMP/outside-dir" "$RD_LINK"
+if ! safe_rd "$RD_LINK" 2>"$TMP/rd-link.log" && [ -L "$RD_LINK" ] && [ -d "$TMP/outside-dir" ]; then
+    echo "PASS: runtime-dir refuses a symlinked directory"; pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir symlink check" >&2; fail=$((fail + 1))
+fi
+rm -f "$RD_LINK"
+if ! safe_rd "$TMP/foreign" 2>"$TMP/rd-foreign.log"; then
+    echo "PASS: runtime-dir refuses an unexpected path"; pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir foreign path check" >&2; fail=$((fail + 1))
+fi
+RD_SUB="$RUN_ROOT/sadr-r1-1700000004-1111"
+mkdir -m 0700 "$RD_SUB"; mkdir "$RD_SUB/subdir"; : >"$RD_SUB/file"
+if ! safe_rd "$RD_SUB" 2>"$TMP/rd-sub.log" && [ -d "$RD_SUB/subdir" ]; then
+    echo "PASS: runtime-dir refuses recursive deletion of subdirectories"; pass=$((pass + 1))
+else
+    echo "FAIL: runtime-dir bounded deletion check" >&2; fail=$((fail + 1))
+fi
+rm -f "$RD_SUB/file"; rmdir "$RD_SUB/subdir" "$RD_SUB"
+
+# Sequencing guard: rule removal -> A2 -> device teardown in the adapter.
+order=$(awk '/stage_enter rule_removal/{r=NR} /stage_enter a2 /{a=NR} /stage_enter device_teardown/{d=NR} END{print r+0, a+0, d+0}' \
+    "$ROOT/qualification/adapters/r1-canary.sh")
+read -r seq_r seq_a seq_d <<<"$order"
+if [ "$seq_r" -gt 0 ] && [ "$seq_a" -gt 0 ] && [ "$seq_d" -gt 0 ] &&
+    [ "$seq_r" -lt "$seq_a" ] && [ "$seq_a" -lt "$seq_d" ]; then
+    echo "PASS: adapter sequence is rule removal, A2, then device teardown"; pass=$((pass + 1))
+else
+    echo "FAIL: adapter sequence is not rule removal -> A2 -> teardown ($order)" >&2; fail=$((fail + 1))
+fi
+
 echo "cleanup tests: pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

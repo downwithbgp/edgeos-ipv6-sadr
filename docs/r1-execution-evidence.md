@@ -1,13 +1,15 @@
-# R1 execution evidence (Phase V-B / V-C / VI-C)
+# R1 execution evidence (Phase V-B / V-C / VI-C / VI-D)
 
-**SADR product status: R1 EXECUTED ONCE (Phase VI-C, lab-VXLAN topology). Phase V-C A1 baseline:
-FAILED at the production IPv6 firewall; no production mutation was attempted in V-C.** In Phase VI-C
-the single authorized lab-VXLAN R1 crossed the production mutation boundary once; A1 and B passed on
-the tested path, A2 was not run because the cleanup gate failed on the experiment's runtime
-directory (removed and verified manually), and acceleration classification is UNKNOWN. No RPDB rule,
-device timer, runtime directory, package, configuration change or controller namespace remains.
-Table `41913` and rules `10410–10414` are unchanged. Raw captures and run directories remain outside
-the repository.
+**SADR product status: R1 EXECUTED TWICE — VI-C FAIL (partial), VI-D complete A/B/A. Phase V-C A1
+baseline: FAILED at the production IPv6 firewall; no production mutation was attempted in V-C.** In
+Phase VI-C the single authorized lab-VXLAN R1 crossed the production mutation boundary once; A1 and B
+passed, A2 was not run because the cleanup gate failed on the experiment's runtime directory (removed
+and verified manually). In Phase VI-D the renewed authorized lab-VXLAN R1 completed A1/B/A2 and all
+cleanup layers; the adapter result reports `fail` only because the foreground tool command hit its
+two-minute cap and the process later received SIGPIPE (rc=141) after every stage had completed.
+Acceleration classification is UNKNOWN for both runs. No RPDB rule, device timer, runtime directory,
+package, configuration change or controller namespace remains. Table `41913` and rules
+`10410–10414` are unchanged. Raw captures and run directories remain outside the repository.
 
 **Phase VI-A/VI-B disposition:** Phase V-C is accepted; the Phase V-C conditional authorization was
 suspended in VI-A and retired without execution/consumption in VI-B. **Phase VI-C execution:** one
@@ -17,11 +19,15 @@ deletion verified; runtime directory removed and verified; protected rules/table
 invariants checked; adapter result status `fail` (cleanup gate only). Executed binding: adapter
 `6d22e6b0a304eb6ad8f2cc6629670c7128bb1a26be23e395a6941d93b03c61ce`, manifest
 `5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4` (record
-`docs/r1-authorization-viic.json`). The current manifest/adapter were regenerated after the run for
-the cleanup correction (adapter
-`9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a`, manifest
-`055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377`) and are **not** the executed
-binding. No firewall exception is authorized or created; PR #1 remains draft; a fresh
+`docs/r1-authorization-viic.json`). The current qualification binding is the Phase VI-D one (adapter
+`7b4322ca…`, cleanup `3c329ca6…`, install `dc5e4e4d…`, manifest `4be0761b…`); the VI-C binding
+remains the executed record for that run. **Phase VI-D execution:** one renewed authorized lab-VXLAN
+R1 (record `docs/r1-authorization-viid.json`, consumed/retired), window 2026-11-28T01:53:07Z–
+01:56:10Z, mutation boundary 01:54:54Z; A1 20/20 + control 10/10; B matching 0/20 + control 10/10;
+exact rule deletion and verified absence; A2 20/20 + control 20; timer/runtime-directory/controller
+cleanup PASS; adapter result fail only on external SIGPIPE (rc=141) after all stages; acceleration
+UNKNOWN. The VI-C evidence above remains the historical FAIL and is not reclassified. No firewall
+exception is authorized or created; PR #1 remains draft; a fresh
 candidate-bound authorization is required for any future execution.
 
 ## 1. Phase V-B abort — root cause
@@ -71,11 +77,14 @@ deployment:
 Manifest at the V-C run: `aec39bda36bc25a422cfcd334f8e9ca2e080a1a64b2cd777ce0adaec3cf00b5f`.
 Phase VI-C executed the lab-VXLAN R1 with adapter
 `6d22e6b0a304eb6ad8f2cc6629670c7128bb1a26be23e395a6941d93b03c61ce` and manifest
-`5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4`; the current files were
-regenerated after the run for the cleanup fix (adapter
-`9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a`, manifest
-`055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377`) and are not the executed
-binding. The V-C evidence above remains bound to the hashes as executed.
+`5e6cc0cbaa5d5c5929c18359105d4c26261b15dce95bc248de378e72cb95f8d4` (historical record).
+Phase VI-D executed with adapter
+`7b4322cab1c451f56934683c7c704ef55e39ebae6505c630dbcb9a1c8039f0db`, cleanup
+`3c329ca6b3dcd20e98f9a0dc0adff37db84c9a533954fadd18f70f5f84040c81`, install
+`dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`, manifest
+`4be0761bcaa93092776ac2071d072a1969e5b1f3f2555d70d862cb2809d599c9`; post-run harness corrections
+regenerate the current files, but this executed binding remains the VI-D record. The V-C evidence
+above remains bound to the hashes as executed.
 Frozen device executables: adapter `14d4d94195e3ac992d886e6f79cd9166cde789e7b4869316bdaa9ba6b84328bc`,
 cleanup `0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883`,
 install `dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f`.

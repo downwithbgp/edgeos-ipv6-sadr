@@ -34,6 +34,7 @@ for path in \
     ./usr/share/perl5/EdgeOS/IPv6SADR/Health.pm \
     ./usr/share/perl5/EdgeOS/IPv6SADR/BootGuard.pm \
     ./usr/share/perl5/EdgeOS/IPv6SADR/Monitor.pm \
+    ./usr/share/perl5/EdgeOS/IPv6SADR/Acceleration.pm \
     ./opt/vyatta/share/vyatta-cfg/templates/protocols/ipv6-sadr/node.def \
     ./opt/vyatta/share/vyatta-op/templates/show/ipv6-sadr/node.def \
     ./lib/systemd/system/edgeos-ipv6-sadr-guard.service \
@@ -69,6 +70,7 @@ if PERL5LIB="$TMP/usr/share/perl5" perl -e '
     require "EdgeOS/IPv6SADR/Health.pm";
     require "EdgeOS/IPv6SADR/BootGuard.pm";
     require "EdgeOS/IPv6SADR/Monitor.pm";
+    require "EdgeOS/IPv6SADR/Acceleration.pm";
     exit($EdgeOS::IPv6SADR::VERSION eq "0.1.0" ? 0 : 1);
 '; then
     ok "installed Perl modules compile and report version 0.1.0"

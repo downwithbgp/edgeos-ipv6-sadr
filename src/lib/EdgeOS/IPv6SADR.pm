@@ -43,6 +43,8 @@ sub new {
         no_sudo   => exists $o{no_sudo} ? $o{no_sudo} : ($ENV{IPV6_SADR_NO_SUDO} ? 1 : 0),
         dry_run   => $o{dry_run}   // 0,
         log_fh    => $o{log_fh},
+        config_boot => $o{config_boot} // $ENV{IPV6_SADR_CONFIG_BOOT} // '/config/config.boot',
+        hw_nat_proc => $o{hw_nat_proc} // $ENV{IPV6_SADR_HWNAT_PROC} // '/proc/mt7621/hw_nat',
     }, $class;
     eval { make_path($self->{state_dir}) unless -d $self->{state_dir}; };
     return $self;
@@ -56,6 +58,17 @@ sub logmsg {
         return;
     }
     print STDERR $line;
+}
+
+# Conservative acceleration detection. Read-only; never changes HWNAT state.
+sub acceleration_state {
+    my ($self) = @_;
+    require EdgeOS::IPv6SADR::Acceleration;
+    my $acc = EdgeOS::IPv6SADR::Acceleration->new(
+        config_boot => $self->{config_boot},
+        hw_nat_proc => $self->{hw_nat_proc},
+    );
+    return $acc->detect();
 }
 
 # ---------------------------------------------------------------- prefix/IPv6

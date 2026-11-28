@@ -13,6 +13,48 @@
 #        rule; 4 delete failed; 5 the rule table could not be read or verified;
 #        7 cleanup lock timeout
 set -u
+
+# Runtime-directory cleanup mode: remove only the uniquely identified,
+# root-owned experimental directory, without following symlinks and without
+# recursive deletion. Test seams: SADR_RUN_ROOT (default /run) and
+# SADR_RUNDIR_OWNER_UID (default 0).
+if [ "${1:-}" = "--runtime-dir" ]; then
+    RUNDIR=${2:-}
+    RUN_ROOT=${SADR_RUN_ROOT:-/run}
+    OWNER_UID=${SADR_RUNDIR_OWNER_UID:-0}
+    case "$RUNDIR" in
+        "$RUN_ROOT"/sadr-r1-[0-9]*-[0-9]*) ;;
+        *) printf 'runtime-dir: refusing unexpected path %s\n' "$RUNDIR" >&2; exit 2 ;;
+    esac
+    if [ ! -e "$RUNDIR" ]; then
+        printf 'runtime-dir: %s already absent\n' "$RUNDIR" >&2
+        exit 0
+    fi
+    if [ ! -d "$RUNDIR" ] || [ -L "$RUNDIR" ]; then
+        printf 'runtime-dir: %s is not a real directory\n' "$RUNDIR" >&2
+        exit 3
+    fi
+    meta=$(stat -c '%u %a' "$RUNDIR" 2>/dev/null) || {
+        printf 'runtime-dir: cannot stat %s\n' "$RUNDIR" >&2
+        exit 3
+    }
+    [ "$meta" = "$OWNER_UID 700" ] || {
+        printf 'runtime-dir: %s has owner/mode %s, expected %s 700\n' "$RUNDIR" "$meta" "$OWNER_UID" >&2
+        exit 3
+    }
+    find -P "$RUNDIR" -mindepth 1 -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null ||
+        { printf 'runtime-dir: file removal failed\n' >&2; exit 4; }
+    find -P "$RUNDIR" -mindepth 1 -maxdepth 1 -type l -exec rm -f {} + 2>/dev/null ||
+        { printf 'runtime-dir: symlink removal failed\n' >&2; exit 4; }
+    if [ -n "$(find -P "$RUNDIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+        printf 'runtime-dir: unknown entries remain; refusing recursive deletion\n' >&2
+        exit 4
+    fi
+    rmdir "$RUNDIR" 2>/dev/null || { printf 'runtime-dir: rmdir failed\n' >&2; exit 4; }
+    [ ! -e "$RUNDIR" ] || { printf 'runtime-dir: %s still present\n' "$RUNDIR" >&2; exit 4; }
+    exit 0
+fi
+
 SELECTOR=${1:?selector required}
 PREF=${2:?priority required}
 LOG=${3:-/tmp/sadr-r1-cleanup.log}

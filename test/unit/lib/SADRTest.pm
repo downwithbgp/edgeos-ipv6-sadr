@@ -99,6 +99,8 @@ sub temp_env {
         IPV6_SADR_IP => "$ROOT/test/unit/fake/fake_ip.py",
         IPV6_SADR_STATE_DIR => "$dir/state",
         IPV6_SADR_NO_SUDO => 1,
+        IPV6_SADR_CONFIG_BOOT => "$dir/config.boot",
+        IPV6_SADR_HWNAT_PROC => "$dir/hw_nat",
         FAKE_CONFIG => "$dir/config.json",
         FAKE_IP_STATE => "$dir/state.json",
         FAKE_IP_LOG => "$dir/ip.log",

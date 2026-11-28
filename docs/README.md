@@ -9,6 +9,7 @@
 | [`phase-vi-a/README.md`](phase-vi-a/README.md) | Phase VI-A deliverable index, recommendation and maintainer decisions |
 | [`phase-vi-b/README.md`](phase-vi-b/README.md) | Phase VI-B deliverable index: accepted decisions, HNAT analysis, invariants, offload criteria, qualification plan and R1 request |
 | [`phase-vi-c/README.md`](phase-vi-c/README.md) | Phase VI-C: lab-VXLAN R1 execution evidence, FOE feasibility (no FOE state observable), cleanup remediation, invalidation feasibility and maintenance-window request |
+| [`phase-vi-d/README.md`](phase-vi-d/README.md) | Phase VI-D: complete R1 A/B/A, acceleration compatibility boundary, G1a–G1e/G2, request C and R2 request |
 | [`investigation/2026-11-27-platform-investigation.md`](investigation/2026-11-27-platform-investigation.md) | Read-only EdgeOS 3.0.1 / ER-X platform evidence |
 | [`investigation/2026-11-27-experiments.md`](investigation/2026-11-27-experiments.md) | Generic-Linux packet-path experiments and candidate-B falsification |
 | [`testing-strategy.md`](testing-strategy.md) | Unit, netns, emulated EdgeOS and hardware qualification layers |

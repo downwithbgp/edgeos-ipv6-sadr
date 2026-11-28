@@ -62,6 +62,10 @@ sub print_health {
     print "realization: " . ($h->{realization} // '') . "\n";
     print "effectiveness: " . ($h->{effectiveness} // '') . "\n";
     print "reachability: " . ($h->{reachability} // 'unverified') . "\n";
+    if (my $acc = $h->{acceleration}) {
+        print "acceleration: $acc->{state} (configured=$acc->{configured} driver=$acc->{driver} effective=$acc->{effective})\n";
+        print "compatibility: CRITICAL $acc->{detail}\n" if $h->{compatibility_violation};
+    }
     print "error: $h->{error}\n" if $h->{error};
     print "last-failed: $h->{last_failed}\n" if $h->{last_failed};
     my @p = @{ $h->{policies} // [] };

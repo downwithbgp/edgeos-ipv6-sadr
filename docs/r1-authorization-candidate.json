@@ -11,12 +11,13 @@
   "recovery": "device-local systemd-run timer plus r1-cleanup.sh exact deletion and verification; foreign rule refused; controller verification required",
   "not_after": "<MAINTAINER-SET-UTC-DEADLINE>",
   "artifact_sha256": "",
-  "adapter_sha256": "9cc33b2cdae732a7d30abd603d2e0cde5d2d406476f11572285607988fd3f97a",
-  "cleanup_sha256": "0681a467d9d2e5739cb1c45bc3c968d532efa21245322d1156a4bda5e11b8883",
+  "adapter_sha256": "00d8880ba84132ae7392731b13f07cec6c881fefeb9fbadf43249befd7edca6a",
+  "cleanup_sha256": "3c329ca6b3dcd20e98f9a0dc0adff37db84c9a533954fadd18f70f5f84040c81",
   "install_sha256": "dc5e4e4d26f1c5a4d528d50a98de0d1e297b85459709b30cbc85f6b7ffcd678f",
   "approval_reference": "Phase V-C maintainer decision \u2014 renewed conditional R1 authorization; A1 blocked by the production IPv6 firewall, no mutation performed",
   "status": "retired",
   "retirement": "Phase VI-B (2026-11-27): the outstanding Phase V-C conditional authorization is retired without execution and without being consumed; no R1/R2 execution is authorized; a fresh candidate-bound authorization is required",
   "execution_manifest": "docs/r1-execution-manifest.json",
-  "execution_manifest_sha256": "055044eb19c417250a5160e2fe74fbda58afe9a2379bd662abd27dc37ecdc377"
+  "execution_manifest_sha256": "1d1b0b4393ac1671c2bef522b72c030159ecbaa640da6287faa100fab8f09e63",
+  "candidate_note": "Regenerated candidate for a future grant; the VI-C and VI-D executions used separate authorization records (docs/r1-authorization-viic.json, docs/r1-authorization-viid.json)."
 }

@@ -19,6 +19,7 @@ my %SEVERITY = (
     'orphaned-guard'         => 5,
     conflict                 => 6,
     failed                   => 7,
+    unqualified              => 8,
 );
 
 my %EXIT_CODE = (
@@ -31,6 +32,7 @@ my %EXIT_CODE = (
     failed                   => 7,
     disabled                 => 8,
     'orphaned-guard'         => 9,
+    unqualified              => 10,
 );
 
 sub health_exit_code {
@@ -274,6 +276,20 @@ sub health {
     };
 }
 
+sub _acceleration_fields {
+    my ($self, $health, $desired) = @_;
+    my $acc = $self->acceleration_state();
+    $health->{acceleration} = $acc;
+    my $has_policies = @{ $desired->{policies} // [] } ? 1 : 0;
+    if ($has_policies && $acc->{state} ne 'compatible') {
+        $health->{compatibility_violation} = 1;
+        $health->{state} = 'unqualified' unless ($health->{state} // '') eq 'failed';
+        push @{ $health->{checks}{conflicts} },
+            "hardware acceleration is not compatible: $acc->{detail}";
+    }
+    return $health;
+}
+
 sub current_health {
     my ($self, %o) = @_;
     my $mode = $o{mode} // 'active';
@@ -285,6 +301,7 @@ sub current_health {
             schema => 1, state => 'dependency-unavailable', intent => 'unreadable',
             realization => 'unknown', effectiveness => 'unknown',
             reachability => 'unverified', generation => '', policies => [],
+            acceleration => $self->acceleration_state(),
             error => $err,
             checks => {
                 conflicts => [$err], dependencies => [], shadowed => [],
@@ -303,6 +320,7 @@ sub current_health {
             schema => 1, state => 'failed', intent => 'configured',
             realization => 'unknown', effectiveness => 'unknown',
             reachability => 'unverified', generation => $desired->{generation} // '',
+            acceleration => $self->acceleration_state(),
             policies => [], error => $err,
             checks => {
                 conflicts => [$err], dependencies => [], shadowed => [],
@@ -320,6 +338,7 @@ sub current_health {
         $health->{last_failed} = $status->{error} // 'reconciliation failed';
         $health->{state} = 'failed';
     }
+    $self->_acceleration_fields($health, $desired);
     return $health;
 }
 
